@@ -20,8 +20,8 @@ function getTransport() {
   return transport;
 }
 
-const log = (to, subject, kind, status, error = '') =>
-  db.prepare('INSERT INTO email_log (at,to_addr,subject,kind,status,error) VALUES (?,?,?,?,?,?)').run(new Date().toISOString(), to, subject, kind, status, String(error).slice(0, 300));
+const log = async (to, subject, kind, status, error = '') =>
+  (await db.prepare('INSERT INTO email_log (at,to_addr,subject,kind,status,error) VALUES (?,?,?,?,?,?)').run(new Date().toISOString(), to, subject, kind, status, String(error).slice(0, 300)));
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -42,15 +42,15 @@ export { esc };
 
 /** Fire-and-forget safe: never throws. Returns true when the message was handed to the SMTP server. */
 export async function sendMail({ to, subject, html, text, attachments, kind = '' }) {
-  if (!emailEnabled()) { log(to, subject, kind, 'skipped', 'SMTP is not configured'); return false; }
+  if (!emailEnabled()) { (await log(to, subject, kind, 'skipped', 'SMTP is not configured')); return false; }
   try {
     const s = getSettings();
     await getTransport().sendMail({ from: process.env.SMTP_FROM, to, subject, html, text: text || html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), attachments, replyTo: s.support_email || undefined });
-    log(to, subject, kind, 'sent');
+    (await log(to, subject, kind, 'sent'));
     return true;
   } catch (e) {
     console.error('Email failed:', e.message);
-    log(to, subject, kind, 'failed', e.message);
+    (await log(to, subject, kind, 'failed', e.message));
     return false;
   }
 }

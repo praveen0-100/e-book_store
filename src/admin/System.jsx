@@ -42,8 +42,8 @@ function Overview() {
             <div><span>Database size</span><span>{fmtBytes(s.dbSize)}</span></div>
             <div><span>Books / orders / feedback</span><span>{s.counts.books} / {s.counts.orders} / {s.counts.feedback}</span></div>
           </div>
-          <a className="btn btn-ghost btn-sm" href="/api/admin/backup"><Icon name="download" size={15} /> Download database backup</a>
-          <p className="muted" style={{ fontSize: 12.5 }}>Uploaded e-books and covers live in the <code>data/files</code> and <code>data/covers</code> folders; back those up too.</p>
+          <a className="btn btn-ghost btn-sm" href="/api/admin/backup"><Icon name="download" size={15} /> Download data export (JSON)</a>
+          <p className="muted" style={{ fontSize: 12.5 }}>For point-in-time recovery use your database provider's backups (Neon keeps history automatically). E-books and covers live in cloud storage.</p>
         </div>
         <div className="card card-pad form-stack">
           <h3 style={{ fontSize: 17 }}>Send a test email</h3>

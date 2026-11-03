@@ -15,10 +15,10 @@ export function mountAuth(app) {
   app.post('/api/auth/google', limiter, wrap(async (req, res) => {
     const g = await verifyGoogleIdToken(req.body?.credential);
     const now = new Date().toISOString();
-    db.prepare(`INSERT INTO customers (google_sub,email,name,picture,created_at,last_login) VALUES (?,?,?,?,?,?)
+    (await db.prepare(`INSERT INTO customers (google_sub,email,name,picture,created_at,last_login) VALUES (?,?,?,?,?,?)
       ON CONFLICT(google_sub) DO UPDATE SET email=excluded.email, name=excluded.name, picture=excluded.picture, last_login=excluded.last_login`)
-      .run(g.sub, g.email, g.name, g.picture, now, now);
-    const user = db.prepare('SELECT * FROM customers WHERE google_sub = ?').get(g.sub);
+      .run(g.sub, g.email, g.name, g.picture, now, now));
+    const user = (await db.prepare('SELECT * FROM customers WHERE google_sub = ?').get(g.sub));
     res.cookie(USER_COOKIE, makeUserSession(user), cookieOpts);
     res.json({ user: publicUser(user) });
   }));
@@ -28,9 +28,9 @@ export function mountAuth(app) {
   app.post('/api/auth/logout', (req, res) => { res.clearCookie(USER_COOKIE, { path: '/' }); res.json({ ok: true }); });
 
   /** The signed-in customer's purchases (matched on their Google-verified email). */
-  app.get('/api/account/orders', (req, res) => {
+  app.get('/api/account/orders', async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Please sign in.' });
-    const rows = db.prepare("SELECT * FROM orders WHERE email = ? AND status != 'pending' ORDER BY created_at DESC").all(req.user.email);
-    res.json(rows.map((o) => ({ ...serializeOrder(o), can_download: canDownload(o) })));
+    const rows = (await db.prepare("SELECT * FROM orders WHERE email = ? AND status != 'pending' ORDER BY created_at DESC").all(req.user.email));
+    res.json(await Promise.all(rows.map(async (o) => ({ ...(await serializeOrder(o)), can_download: canDownload(o) }))));
   });
 }

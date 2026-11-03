@@ -10,7 +10,6 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { DatabaseSync } from 'node:sqlite';
 
 const KEY_SECRET = 'test_secret';
 const GOOGLE_CLIENT = 'test-client.apps.googleusercontent.com';
@@ -37,8 +36,17 @@ async function call(p, { method = 'GET', body, headers = {}, admin = false, raw 
   let data = null; try { data = await res.json(); } catch { /* not json */ }
   return { status: res.status, data };
 }
-const setSetting = (k, v) => { const db = new DatabaseSync(path.join(dataDir, 'store.db')); db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, v); db.close(); };
-const dbq = (sql, ...a) => { const db = new DatabaseSync(path.join(dataDir, 'store.db')); try { return db.prepare(sql).all(...a); } finally { db.close(); } };
+/** Admin settings are changed through the real API (the database engine is single-process, so tests never open it directly). */
+const setSetting = async (k, v) => {
+  const cur = (await call('/api/admin/settings', { admin: true })).data;
+  const r = await call('/api/admin/settings', { method: 'PUT', body: { ...cur, [k]: v }, admin: true });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+};
+const auditActions = async () => (await call('/api/admin/audit', { admin: true })).data.rows.map((r) => r.action);
+const paidTotals = async () => {
+  const rows = (await call('/api/admin/orders?status=paid&limit=100', { admin: true })).data.rows;
+  return { c: rows.length, s: rows.reduce((a, r) => a + r.total_cents, 0) };
+};
 
 /** Simulates a customer paying through Razorpay Checkout; returns the order token. */
 async function buy({ email = 'buyer@example.com', name = 'Test Buyer', coupon, ids } = {}) {
@@ -83,7 +91,7 @@ before(async () => {
 
 after(async () => {
   server?.kill(); rzp?.close();
-  await new Promise((r) => setTimeout(r, 500)); // let the server release its SQLite files (Windows)
+  await new Promise((r) => setTimeout(r, 500)); // let the server release its data files (Windows)
   try { fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* temp dir; the OS cleans it up */ }
 });
 
@@ -144,7 +152,7 @@ test('webhook completes an order the browser never confirmed', async () => {
 });
 
 test('manual approval mode: hold -> approve payment -> issue invoice', async () => {
-  setSetting('require_approval', 'true');
+  await setSetting('require_approval', 'true');
   const o = await buy({ email: 'manual@example.com', name: 'Manual Buyer' });
   assert.equal((await verify(o)).status, 200);
   let order = (await call(`/api/orders/${o.token}`)).data;
@@ -163,11 +171,11 @@ test('manual approval mode: hold -> approve payment -> issue invoice', async () 
   const inv = await call(`/api/admin/orders/${id}/issue-invoice`, { method: 'POST', admin: true });
   assert.equal(inv.status, 200); assert.match(inv.data.invoice_no, /^INV-\d{4}-0000\d$/);
   assert.equal((await call(`/api/orders/${o.token}/invoice.pdf`, { raw: true })).status, 200);
-  assert.ok(dbq("SELECT 1 FROM audit_log WHERE action='payment.approved'").length);
+  assert.ok((await auditActions()).includes('payment.approved'));
 });
 
 test('rejecting a payment refunds it through Razorpay and blocks downloads', async () => {
-  setSetting('require_approval', 'true');
+  await setSetting('require_approval', 'true');
   const o = await buy({ email: 'reject@example.com' });
   await verify(o);
   const placed = (await call(`/api/orders/${o.token}`)).data; const id = placed.id;
@@ -175,7 +183,7 @@ test('rejecting a payment refunds it through Razorpay and blocks downloads', asy
   assert.equal(r.status, 200); assert.equal(r.data.status, 'refunded'); assert.equal(r.data.approval_status, 'rejected'); assert.equal(r.data.invoice_status, 'void');
   assert.ok(rzpState.refunds.some((x) => x.payment === o.paymentId && x.amount === 50000));
   assert.equal((await call(`/api/download/${o.token}/${placed.items[0].id}`, { raw: true })).status, 403);
-  setSetting('require_approval', 'false');
+  await setSetting('require_approval', 'false');
 });
 
 test('plain refund of an approved order', async () => {
@@ -191,7 +199,7 @@ test('feedback: moderation, public listing, reply, rating recompute', async () =
   const mk = (extra) => call('/api/feedback', { method: 'POST', body: { type: 'review', book_id: book.id, name: 'Rita Rao', email: 'buyer@example.com', rating: 4, message: 'Really useful book.', ...extra } });
   assert.equal((await mk({ rating: 9 })).status, 400);
   assert.equal((await mk({ website: 'http://spam' })).status, 200, 'honeypot silently accepted');
-  assert.equal(dbq('SELECT * FROM feedback').length, 0, 'honeypot not stored');
+  assert.equal((await call('/api/admin/feedback', { admin: true })).data.total, 0, 'honeypot not stored');
   assert.equal((await mk()).status, 200);
   assert.equal((await mk()).status, 409, 'one review per email per book');
   assert.equal((await call(`/api/books/${book.slug}/reviews`)).data.reviews.length, 0, 'pending reviews not public');
@@ -207,7 +215,7 @@ test('feedback: moderation, public listing, reply, rating recompute', async () =
   const rep = await call(`/api/admin/feedback/${f.id}/reply`, { method: 'POST', body: { reply: 'Thanks Rita!' }, admin: true });
   assert.equal(rep.status, 200); assert.equal(rep.data.emailed, false, 'no SMTP configured');
   assert.equal((await call(`/api/books/${book.slug}/reviews`)).data.reviews[0].reply, 'Thanks Rita!');
-  assert.ok(dbq("SELECT 1 FROM email_log WHERE kind='feedback-reply' AND status='skipped'").length, 'skipped email is logged');
+  assert.ok((await call('/api/admin/email-log', { admin: true })).data.some((e) => e.kind === 'feedback-reply' && e.status === 'skipped'), 'skipped email is logged');
 
   const msg = await call('/api/feedback', { method: 'POST', body: { type: 'message', name: 'Q', email: 'q@example.com', subject: 'Help', message: 'Cannot open my file' } });
   assert.equal(msg.status, 200);
@@ -227,13 +235,14 @@ test('customers: profile, notes, CSV, erasure', async () => {
 
   assert.equal((await call('/api/admin/customers/refund%40example.com/erase', { method: 'POST', body: { confirm: 'wrong' }, admin: true })).status, 400);
   assert.equal((await call('/api/admin/customers/refund%40example.com/erase', { method: 'POST', body: { confirm: 'refund@example.com' }, admin: true })).status, 200);
-  assert.equal(dbq("SELECT COUNT(*) c FROM orders WHERE email='refund@example.com'")[0].c, 0, 'personal data gone');
-  assert.ok(dbq("SELECT COUNT(*) c FROM orders WHERE name='Erased customer'")[0].c >= 1, 'financial record kept, anonymised');
+  const after = (await call('/api/admin/customers', { admin: true })).data;
+  assert.ok(!after.some((c) => c.email === 'refund@example.com'), 'personal data gone');
+  assert.ok(after.some((c) => c.name === 'Erased customer'), 'financial record kept, anonymised');
 });
 
 test('analytics: overview, daily report and CSV agree with orders', async () => {
   const ov = (await call('/api/admin/overview', { admin: true })).data;
-  const paid = dbq("SELECT COUNT(*) c, COALESCE(SUM(total_cents),0) s FROM orders WHERE status='paid'")[0];
+  const paid = await paidTotals();
   assert.equal(ov.today.orders, paid.c); assert.equal(ov.today.revenue, paid.s);
   const daily = (await call('/api/admin/daily?days=3', { admin: true })).data;
   assert.equal(daily.length, 3); assert.equal(daily[0].revenue, paid.s);
@@ -251,7 +260,7 @@ test('system: warnings, audit log, backup, password change', async () => {
   const audit = (await call('/api/admin/audit', { admin: true })).data;
   assert.ok(audit.total > 5);
   const bk = await call('/api/admin/backup', { admin: true, raw: true });
-  assert.equal(bk.status, 200); assert.equal(Buffer.from(await bk.arrayBuffer()).subarray(0, 15).toString(), 'SQLite format 3');
+  assert.equal(bk.status, 200); const dump = JSON.parse(await bk.text()); assert.ok(dump.tables.orders.length > 0 && dump.tables.books.length > 0);
   assert.equal((await call('/api/admin/password', { method: 'POST', body: { current: 'bad', next: 'a-new-long-password' }, admin: true })).status, 400);
   assert.equal((await call('/api/admin/password', { method: 'POST', body: { current: 'correct-horse-battery', next: 'short' }, admin: true })).status, 400);
 });
@@ -294,7 +303,7 @@ test('Google sign-in: token verification, session, account orders, identity bind
   // checkout binds to the verified Google identity, ignoring any email the browser sends
   const c = await call('/api/checkout', { method: 'POST', headers: { cookie: uc }, body: { ids: [book.id], name: 'Spoof', email: 'victim@example.com' } });
   assert.equal(c.status, 200);
-  const row = dbq('SELECT email, name FROM orders WHERE token = ?', c.data.token)[0];
+  const row = (await call(`/api/orders/${c.data.token}`)).data;
   assert.equal(row.email, 'googler@example.com'); assert.equal(row.name, 'Gita Googler');
   const paymentId = 'pay_g1';
   rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, status: 'captured', method: 'upi' });

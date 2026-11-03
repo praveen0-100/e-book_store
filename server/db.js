@@ -1,21 +1,94 @@
-import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { fileURLToPath } from 'node:url';
 import { hashPassword } from './auth.js';
 
+/**
+ * Database layer: PostgreSQL everywhere.
+ *   - Production / Vercel:  DATABASE_URL  (Neon, Supabase, RDS ... any Postgres)  via the `pg` driver
+ *   - Local dev / tests:    PGlite, a real Postgres engine running in-process, stored in DATA_DIR/pgdata
+ * Queries are written once with `?` placeholders and translated to $1, $2 ...
+ */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, '..', 'data');
 export const FILES_DIR = path.join(DATA_DIR, 'files');
 export const COVERS_DIR = path.join(DATA_DIR, 'covers');
-for (const d of [DATA_DIR, FILES_DIR, COVERS_DIR]) fs.mkdirSync(d, { recursive: true });
+export const usingPostgres = Boolean(process.env.DATABASE_URL);
+// local-disk storage folders (not needed, and not writable, on Vercel where files live in Blob)
+if (!process.env.BLOB_READ_WRITE_TOKEN) for (const d of [FILES_DIR, COVERS_DIR]) { try { fs.mkdirSync(d, { recursive: true }); } catch { /* read-only filesystem */ } }
 
-export const db = new DatabaseSync(path.join(DATA_DIR, 'store.db'));
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+const als = new AsyncLocalStorage(); // binds queries made inside tx() to that transaction's connection
+let driver; // { query(sql, params) -> { rows, count }, transaction(fn) }
 
-db.exec(`
+const toPg = (sql) => { let n = 0; return sql.replace(/\?/g, () => `$${++n}`); };
+const asNumber = (v) => (v === null ? null : Number(v));
+
+async function connect() {
+  if (process.env.VERCEL && !usingPostgres) {
+    // Vercel functions have no persistent disk: refuse to start rather than silently lose orders
+    throw new Error("DATABASE_URL is not set. Add a Postgres database (e.g. Neon) to this Vercel project.");
+  }
+  if (usingPostgres) {
+    const pg = (await import('pg')).default;
+    pg.types.setTypeParser(20, asNumber);   // bigint  (COUNT, SUM)
+    pg.types.setTypeParser(1700, asNumber); // numeric (AVG)
+    const local = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
+    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX) || 5, ssl: local ? false : { rejectUnauthorized: false }, idleTimeoutMillis: 10000, connectionTimeoutMillis: 15000 });
+    pool.on('error', (e) => console.error('pg pool error', e.message));
+    return {
+      async query(sql, params = []) { const r = await pool.query(sql, params); return { rows: r.rows, count: r.rowCount ?? 0 }; },
+      async exec(sql) { await pool.query(sql); },
+      async transaction(fn) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const out = await fn({ query: async (sql, params = []) => { const r = await client.query(sql, params); return { rows: r.rows, count: r.rowCount ?? 0 }; } });
+          await client.query('COMMIT');
+          return out;
+        } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+      },
+    };
+  }
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const { PGlite } = await import('@electric-sql/pglite');
+  const lite = new PGlite(path.join(DATA_DIR, 'pgdata'), { parsers: { 20: asNumber, 1700: asNumber } });
+  await lite.waitReady;
+  const wrap = (o) => ({ query: async (sql, params = []) => { const r = await o.query(sql, params); return { rows: r.rows, count: r.affectedRows ?? 0 }; } });
+  return {
+    query: wrap(lite).query,
+    exec: async (sql) => { await lite.exec(sql); },
+    transaction: (fn) => lite.transaction(async (t) => fn(wrap(t))),
+  };
+}
+
+// NaN / undefined (e.g. Number("abc") from a URL) become NULL instead of a Postgres type error
+const clean = (params) => params.map((v) => (v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? null : v));
+const exec = (sql, params) => (als.getStore() || driver).query(toPg(sql), clean(params));
+
+/** Async query helpers. `db.prepare(sql).get/all/run(...)` is kept so call sites read the same as before. */
+export const db = {
+  prepare(sql) {
+    return {
+      get: async (...p) => (await exec(sql, p)).rows[0],
+      all: async (...p) => (await exec(sql, p)).rows,
+      run: async (...p) => { const r = await exec(sql, p); return { changes: r.count, lastInsertRowid: r.rows[0]?.id }; },
+    };
+  },
+  /** INSERT that returns the new row id. */
+  async insert(sql, ...p) { return (await exec(`${sql} RETURNING id`, p)).rows[0].id; },
+  exec: (sql) => driver.exec(sql),
+};
+
+/** Runs fn in a transaction; every db call made inside (even in helper functions) joins it. */
+export function tx(fn) {
+  if (als.getStore()) return fn(); // already inside a transaction
+  return driver.transaction((t) => als.run(t, fn));
+}
+
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS books (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
   title TEXT NOT NULL,
   subtitle TEXT DEFAULT '',
@@ -25,8 +98,8 @@ CREATE TABLE IF NOT EXISTS books (
   price_cents INTEGER NOT NULL,
   compare_cents INTEGER DEFAULT 0,
   pages INTEGER DEFAULT 0,
-  format TEXT DEFAULT 'PDF · EPUB',
-  rating REAL DEFAULT 4.7,
+  format TEXT DEFAULT 'PDF',
+  rating DOUBLE PRECISION DEFAULT 0,
   reviews INTEGER DEFAULT 0,
   featured INTEGER DEFAULT 0,
   published INTEGER DEFAULT 1,
@@ -38,7 +111,7 @@ CREATE TABLE IF NOT EXISTS books (
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS orders (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   token TEXT UNIQUE NOT NULL,
   email TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -47,18 +120,31 @@ CREATE TABLE IF NOT EXISTS orders (
   discount_cents INTEGER NOT NULL DEFAULT 0,
   tax_cents INTEGER NOT NULL DEFAULT 0,
   total_cents INTEGER NOT NULL,
-  tax_rate REAL NOT NULL DEFAULT 0,
+  tax_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
   coupon TEXT,
   payment_method TEXT DEFAULT 'razorpay',
   card_brand TEXT,
   card_last4 TEXT,
   payment_ref TEXT,
+  provider_order_id TEXT,
   created_at TEXT NOT NULL,
-  refunded_at TEXT
+  refunded_at TEXT,
+  approval_status TEXT NOT NULL DEFAULT 'approved',
+  approved_at TEXT,
+  approved_by TEXT,
+  reject_reason TEXT,
+  invoice_status TEXT NOT NULL DEFAULT 'issued',
+  invoice_no TEXT,
+  invoice_issued_at TEXT,
+  invoice_issued_by TEXT,
+  ip TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_provider ON orders(provider_order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_invoice_no ON orders(invoice_no) WHERE invoice_no IS NOT NULL;
 CREATE TABLE IF NOT EXISTS order_items (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   book_id INTEGER,
   title TEXT NOT NULL,
@@ -68,43 +154,22 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_order ON order_items(order_id);
 CREATE TABLE IF NOT EXISTS admins (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS coupons (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   code TEXT UNIQUE NOT NULL,
   percent INTEGER NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   uses INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-`);
-
-// Lightweight migration: link orders to the payment provider's order id
-const orderCols = db.prepare('PRAGMA table_info(orders)').all().map((c) => c.name);
-if (!orderCols.includes('provider_order_id')) db.exec('ALTER TABLE orders ADD COLUMN provider_order_id TEXT');
-const addCol = (table, col, ddl) => {
-  if (!db.prepare('PRAGMA table_info(' + table + ')').all().some((c) => c.name === col)) db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + col + ' ' + ddl);
-};
-addCol('orders', 'approval_status', "TEXT NOT NULL DEFAULT 'approved'"); // approved | pending | rejected  (payment approval)
-addCol('orders', 'approved_at', 'TEXT');
-addCol('orders', 'approved_by', 'TEXT');
-addCol('orders', 'reject_reason', 'TEXT');
-addCol('orders', 'invoice_status', "TEXT NOT NULL DEFAULT 'issued'"); // pending | issued | void  (invoice approval)
-addCol('orders', 'invoice_no', 'TEXT');
-addCol('orders', 'invoice_issued_at', 'TEXT');
-addCol('orders', 'invoice_issued_by', 'TEXT');
-addCol('orders', 'ip', 'TEXT');
-db.exec(String.raw`
-CREATE INDEX IF NOT EXISTS idx_orders_provider ON orders(provider_order_id);
-CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_invoice_no ON orders(invoice_no) WHERE invoice_no IS NOT NULL;
 CREATE TABLE IF NOT EXISTS feedback (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL,                 -- review | message
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  type TEXT NOT NULL,
   book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -112,7 +177,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   subject TEXT DEFAULT '',
   message TEXT NOT NULL,
   verified INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'new', -- reviews: pending | published | hidden   messages: new | resolved
+  status TEXT NOT NULL DEFAULT 'new',
   reply TEXT,
   replied_at TEXT,
   replied_by TEXT,
@@ -121,7 +186,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, type);
 CREATE INDEX IF NOT EXISTS idx_feedback_book ON feedback(book_id);
 CREATE TABLE IF NOT EXISTS customers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   google_sub TEXT UNIQUE NOT NULL,
   email TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -131,7 +196,7 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
 CREATE TABLE IF NOT EXISTS customer_notes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   email TEXT NOT NULL,
   note TEXT NOT NULL,
   author TEXT NOT NULL,
@@ -139,7 +204,7 @@ CREATE TABLE IF NOT EXISTS customer_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_notes_email ON customer_notes(email);
 CREATE TABLE IF NOT EXISTS audit_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   at TEXT NOT NULL,
   actor TEXT NOT NULL,
   action TEXT NOT NULL,
@@ -147,27 +212,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS email_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   at TEXT NOT NULL,
   to_addr TEXT NOT NULL,
   subject TEXT NOT NULL,
   kind TEXT DEFAULT '',
-  status TEXT NOT NULL,               -- sent | failed | skipped
+  status TEXT NOT NULL,
   error TEXT DEFAULT ''
 );
-`);
-
-export function tx(fn) {
-  db.exec('BEGIN');
-  try {
-    const r = fn();
-    db.exec('COMMIT');
-    return r;
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
+`;
 
 export const DEFAULT_SETTINGS = {
   store_name: 'PrepPath E-books Store',
@@ -184,39 +237,59 @@ export const DEFAULT_SETTINGS = {
   invoice_notes: 'Thank you for your purchase. Your digital products are available instantly from your download page.',
 };
 
-export function getSettings() {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
-  const s = { ...DEFAULT_SETTINGS };
-  for (const r of rows) s[r.key] = r.value;
-  return s;
+/* Settings are cached for a few seconds so synchronous helpers can read them; a request middleware refreshes the cache. */
+let settingsCache = { ...DEFAULT_SETTINGS };
+let settingsAt = 0;
+export const getSettings = () => settingsCache;
+export async function loadSettings(force = false) {
+  if (!force && Date.now() - settingsAt < 3000) return settingsCache;
+  const rows = await db.prepare('SELECT key, value FROM settings').all();
+  settingsCache = { ...DEFAULT_SETTINGS };
+  for (const r of rows) settingsCache[r.key] = r.value;
+  settingsAt = Date.now();
+  return settingsCache;
 }
 
-/** Record an admin/system action for the audit trail. */
-export function audit(actor, action, target = '', detail = '') {
-  db.prepare('INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?,?,?,?,?)').run(new Date().toISOString(), actor || 'system', action, String(target), String(detail).slice(0, 500));
+/** Record an admin/system action for the audit trail. Never throws. */
+export async function audit(actor, action, target = '', detail = '') {
+  try {
+    await db.prepare('INSERT INTO audit_log (at, actor, action, target, detail) VALUES (?,?,?,?,?)').run(new Date().toISOString(), actor || 'system', action, String(target), String(detail).slice(0, 500));
+  } catch (e) { console.error('audit failed', e.message); }
 }
 
-/** Next sequential, gap-free invoice number, e.g. INV-2026-00042 (call inside a transaction). */
-export function nextInvoiceNo() {
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'invoice_seq'").get();
-  const seq = (row ? Number(row.value) : 0) + 1;
-  db.prepare("INSERT INTO settings (key, value) VALUES ('invoice_seq', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(seq));
-  return getSettings().invoice_prefix + new Date().getFullYear() + '-' + String(seq).padStart(5, '0');
+/** Next sequential, gap-free invoice number, e.g. INV-2026-00042. Atomic; call inside the same transaction as the invoice update. */
+export async function nextInvoiceNo() {
+  await db.prepare("INSERT INTO settings (key, value) VALUES ('invoice_seq', '0') ON CONFLICT (key) DO NOTHING").run();
+  const row = await db.prepare("UPDATE settings SET value = ((value)::int + 1)::text WHERE key = 'invoice_seq' RETURNING value").get();
+  await loadSettings(true);
+  return settingsCache.invoice_prefix + new Date().getFullYear() + '-' + String(row.value).padStart(5, '0');
 }
 
 export function slugify(t) {
   return t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-
-/* Seed: only the admin account. Books, coupons and orders are created by you in the admin panel. */
-export function seedIfEmpty() {
-  if (!db.prepare('SELECT COUNT(*) c FROM admins').get().c) {
-    const email = process.env.ADMIN_EMAIL || 'admin@preppath.store';
+/** Connects, creates the schema and seeds the admin account. Safe to call on every cold start. */
+async function init() {
+  driver = await connect();
+  if (usingPostgres) {
+    // serialise schema creation across concurrently-starting serverless instances
+    await tx(async () => {
+      await db.prepare('SELECT pg_advisory_xact_lock(727274)').get();
+      await als.getStore().query(SCHEMA); // same connection as the lock
+    });
+  } else {
+    await driver.exec(SCHEMA);
+  }
+  if (!(await db.prepare('SELECT COUNT(*) c FROM admins').get()).c) {
+    const email = (process.env.ADMIN_EMAIL || 'admin@preppath.store').trim().toLowerCase();
     const pass = process.env.ADMIN_PASSWORD || 'admin123';
     if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
       console.warn('WARNING: ADMIN_PASSWORD is not set; using the insecure default password. Set it before going live.');
     }
-    db.prepare('INSERT INTO admins (email,name,password_hash) VALUES (?,?,?)').run(email.trim().toLowerCase(), 'Admin', hashPassword(pass));
+    await db.prepare('INSERT INTO admins (email,name,password_hash) VALUES (?,?,?) ON CONFLICT (email) DO NOTHING').run(email, 'Admin', hashPassword(pass));
   }
+  await loadSettings(true);
 }
+
+export const ready = init();

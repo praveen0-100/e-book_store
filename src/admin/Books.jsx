@@ -18,6 +18,9 @@ function BookForm({ book, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(null);
+  const [storage, setStorage] = useState('local'); // 'blob' on Vercel: e-books upload straight to cloud storage
+  const [progress, setProgress] = useState(null);
+  useEffect(() => { api('/admin/storage').then((r) => setStorage(r.mode)).catch(() => {}); }, []);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
   useEffect(() => {
@@ -29,12 +32,22 @@ function BookForm({ book, onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setProgress(null);
+    if (cover && cover.size > 4 * 1024 * 1024 && storage === 'blob') { setBusy(false); return setError('Cover image must be under 4 MB.'); }
     const fd = new FormData();
     ['title', 'subtitle', 'author', 'category', 'price', 'compare_price', 'pages', 'format', 'description', 'color_a', 'color_b'].forEach((k) => fd.append(k, f[k] ?? ''));
     fd.append('featured', f.featured); fd.append('published', f.published);
     if (cover) fd.append('cover', cover);
-    if (ebook) fd.append('ebook', ebook);
+    try {
+      if (ebook && storage === 'blob') {
+        const { upload } = await import('@vercel/blob/client');
+        const blob = await upload(`ebooks/${ebook.name.replace(/[^A-Za-z0-9._-]/g, '_')}`, ebook, {
+          access: 'private', handleUploadUrl: '/api/admin/blob-upload', multipart: ebook.size > 20 * 1024 * 1024,
+          onUploadProgress: (ev) => setProgress(Math.round(ev.percentage)),
+        });
+        fd.append('ebook_blob', blob.pathname); fd.append('ebook_name', ebook.name);
+      } else if (ebook) fd.append('ebook', ebook);
+    } catch (err) { setError(err.message || 'Upload failed. Please try again.'); setBusy(false); setProgress(null); return; }
     if (removeCover) fd.append('remove_cover', 'true');
     try {
       await api(editing ? `/admin/books/${book.id}` : '/admin/books', { method: editing ? 'PUT' : 'POST', form: fd });
@@ -82,7 +95,7 @@ function BookForm({ book, onClose, onSaved }) {
             </div>
           </div>
         </div>
-        <div className="modal-foot"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-gold" disabled={busy}>{busy ? <span className="spinner" /> : editing ? 'Save changes' : 'Create book'}</button></div>
+        <div className="modal-foot"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-gold" disabled={busy}>{busy ? <><span className="spinner" />{progress != null ? ` Uploading ${progress}%` : ''}</> : editing ? 'Save changes' : 'Create book'}</button></div>
       </form>
     </div>
   );
