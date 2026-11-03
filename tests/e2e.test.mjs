@@ -77,7 +77,7 @@ before(async () => {
 
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: process.cwd(), stdio: 'ignore',
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_PASSWORD: 'correct-horse-battery', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: KEY_SECRET, RAZORPAY_WEBHOOK_SECRET: WH_SECRET, RAZORPAY_API_URL: `http://localhost:${RZP_PORT}/v1`, GOOGLE_CLIENT_ID: GOOGLE_CLIENT, GOOGLE_JWKS_URL: `http://localhost:${RZP_PORT}/certs`, SMTP_HOST: '', SMTP_FROM: '' },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_PASSWORD: 'correct-horse-battery', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: KEY_SECRET, RAZORPAY_WEBHOOK_SECRET: WH_SECRET, RAZORPAY_API_URL: `http://localhost:${RZP_PORT}/v1`, AUTH_DEBUG_TOKENS: 'true', GOOGLE_CLIENT_ID: GOOGLE_CLIENT, GOOGLE_JWKS_URL: `http://localhost:${RZP_PORT}/certs`, SMTP_HOST: '', SMTP_FROM: '' },
   });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(base + '/api/health')).ok) break; } catch { /* wait */ } await new Promise((r) => setTimeout(r, 150)); }
 
@@ -313,4 +313,113 @@ test('Google sign-in: token verification, session, account orders, identity bind
   assert.equal(mine.length, 1); assert.equal(mine[0].can_download, true);
 
   assert.equal((await call('/api/auth/logout', { method: 'POST', headers: { cookie: uc } })).status, 200);
+});
+
+/* ------------------------------------------------------------------ customer accounts (sign up / log in) */
+const authPost = async (p, body, cookie) => {
+  const res = await fetch(base + p, { method: 'POST', headers: { ...json(), ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+  let data = null; try { data = await res.clone().json(); } catch { /* none */ }
+  return { res, data, status: res.status, cookie: res.headers.get('set-cookie')?.split(';')[0] };
+};
+
+test('sign up: validation, session, duplicate protection', async () => {
+  assert.equal((await authPost('/api/auth/register', { name: 'A', email: 'a@x.co', password: 'longenough1' })).status, 400, 'name too short');
+  assert.equal((await authPost('/api/auth/register', { name: 'Asha Rao', email: 'not-an-email', password: 'longenough1' })).status, 400);
+  assert.equal((await authPost('/api/auth/register', { name: 'Asha Rao', email: 'asha@example.com', password: 'short' })).status, 400, 'password too short');
+  assert.equal((await authPost('/api/auth/register', { name: 'Asha Rao', email: 'asha@example.com', password: 'password123' })).status, 400, 'common password');
+
+  const ok = await authPost('/api/auth/register', { name: 'Asha Rao', email: 'Asha@Example.com', password: 'correct-horse-9' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.user.email, 'asha@example.com'); assert.equal(ok.data.user.email_verified, false); assert.equal(ok.data.user.has_password, true);
+  assert.ok(!('password_hash' in ok.data.user), 'hash never sent to the browser');
+  assert.match(ok.res.headers.get('set-cookie'), /HttpOnly/i);
+  assert.equal((await call('/api/auth/me', { headers: { cookie: ok.cookie } })).data.user.email, 'asha@example.com');
+  assert.equal((await authPost('/api/auth/register', { name: 'Someone Else', email: 'ASHA@example.com', password: 'another-pass-1' })).status, 409, 'duplicate email');
+});
+
+test('log in: correct/incorrect credentials, no account enumeration, lockout', async () => {
+  const bad = await authPost('/api/auth/login', { email: 'asha@example.com', password: 'wrong-password' });
+  const unknown = await authPost('/api/auth/login', { email: 'nobody@example.com', password: 'wrong-password' });
+  assert.equal(bad.status, 401); assert.equal(unknown.status, 401);
+  assert.equal(bad.data.error, unknown.data.error, 'same message whether or not the account exists');
+  const good = await authPost('/api/auth/login', { email: 'ASHA@example.com', password: 'correct-horse-9' });
+  assert.equal(good.status, 200); assert.equal(good.data.user.name, 'Asha Rao');
+
+  await authPost('/api/auth/register', { name: 'Lock Out', email: 'lock@example.com', password: 'correct-horse-9' });
+  let last;
+  for (let i = 0; i < 9; i++) last = await authPost('/api/auth/login', { email: 'lock@example.com', password: 'nope-nope-nope' });
+  assert.equal(last.status, 429, 'locked after repeated failures');
+  assert.equal((await authPost('/api/auth/login', { email: 'lock@example.com', password: 'correct-horse-9' })).status, 429, 'even the right password is refused while locked');
+});
+
+test('email verification gates order history; links are single-use', async () => {
+  const o = await buy({ email: 'victim@example.com', name: 'Real Owner' });
+  assert.equal((await verify(o)).status, 200);
+
+  const reg = await authPost('/api/auth/register', { name: 'Imposter', email: 'victim@example.com', password: 'correct-horse-9' });
+  assert.equal(reg.status, 200);
+  let mine = await call('/api/account/orders', { headers: { cookie: reg.cookie } });
+  assert.equal(mine.data.length, 0, 'unverified account must NOT see orders bought under that email');
+
+  const v = await authPost('/api/auth/verify', { token: reg.data.dev_verify_token });
+  assert.equal(v.status, 200); assert.equal(v.data.user.email_verified, true);
+  assert.equal((await authPost('/api/auth/verify', { token: reg.data.dev_verify_token })).status, 400, 'link works once');
+  assert.equal((await authPost('/api/auth/verify', { token: 'garbage' })).status, 400);
+  mine = await call('/api/account/orders', { headers: { cookie: v.cookie } });
+  assert.equal(mine.data.length, 1, 'after verifying the email, history appears');
+});
+
+test('orders placed while logged in always belong to that account', async () => {
+  const login = await authPost('/api/auth/login', { email: 'asha@example.com', password: 'correct-horse-9' });
+  const c = await call('/api/checkout', { method: 'POST', headers: { cookie: login.cookie }, body: { ids: [book.id], name: 'Spoof', email: 'spoof@example.com' } });
+  assert.equal(c.status, 200);
+  const paymentId = 'pay_acct1';
+  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, status: 'captured', method: 'card', card: { network: 'Visa', last4: '1111' } });
+  const sig = crypto.createHmac('sha256', KEY_SECRET).update(`${c.data.razorpay_order_id}|${paymentId}`).digest('hex');
+  assert.equal((await authPost('/api/checkout/verify', { token: c.data.token, razorpay_order_id: c.data.razorpay_order_id, razorpay_payment_id: paymentId, razorpay_signature: sig })).status, 200);
+  const order = (await call(`/api/orders/${c.data.token}`)).data;
+  assert.equal(order.email, 'asha@example.com', 'identity comes from the account, not the request');
+  const mine = (await call('/api/account/orders', { headers: { cookie: login.cookie } })).data;
+  assert.equal(mine.length, 1, 'visible even though this account is not email-verified (placed while logged in)');
+  assert.equal(mine[0].can_download, true);
+});
+
+test('forgot / reset password', async () => {
+  const unknown = await authPost('/api/auth/forgot', { email: 'ghost@example.com' });
+  assert.equal(unknown.status, 200); assert.ok(!unknown.data.dev_reset_token);
+  const known = await authPost('/api/auth/forgot', { email: 'asha@example.com' });
+  assert.equal(known.status, 200);
+  const token = known.data.dev_reset_token;
+  assert.ok(token);
+  assert.equal((await authPost('/api/auth/reset', { token, password: 'tiny' })).status, 400);
+  assert.equal((await authPost('/api/auth/reset', { token: 'garbage', password: 'brand-new-pass-1' })).status, 400);
+  const r = await authPost('/api/auth/reset', { token, password: 'brand-new-pass-1' });
+  assert.equal(r.status, 200); assert.equal(r.data.user.email_verified, true, 'reset link proves email ownership');
+  assert.equal((await authPost('/api/auth/reset', { token, password: 'another-new-pass-2' })).status, 400, 'reset link works once');
+  assert.equal((await authPost('/api/auth/login', { email: 'asha@example.com', password: 'correct-horse-9' })).status, 401, 'old password no longer works');
+  assert.equal((await authPost('/api/auth/login', { email: 'asha@example.com', password: 'brand-new-pass-1' })).status, 200);
+});
+
+test('Google and password accounts with the same email become one account', async () => {
+  const reg = await authPost('/api/auth/register', { name: 'Link Me', email: 'link@example.com', password: 'correct-horse-9' });
+  assert.equal(reg.status, 200);
+  const g = await authPost('/api/auth/google', { credential: idToken({ email: 'link@example.com', sub: 'g-link-1', name: 'Link Me' }) });
+  assert.equal(g.status, 200);
+  assert.equal(g.data.user.id, reg.data.user.id, 'same account');
+  assert.equal(g.data.user.has_google, true); assert.equal(g.data.user.has_password, true); assert.equal(g.data.user.email_verified, true);
+  assert.equal((await authPost('/api/auth/login', { email: 'link@example.com', password: 'correct-horse-9' })).status, 200, 'password still works after linking');
+});
+
+test('google-only account gets a helpful message on password login; exports never contain hashes', async () => {
+  const msg = await authPost('/api/auth/login', { email: 'googler@example.com', password: 'whatever-123' });
+  assert.equal(msg.status, 401); assert.match(msg.data.error, /Google/);
+  const dump = await (await call('/api/admin/backup', { admin: true, raw: true })).text();
+  assert.ok(!/password_hash/.test(dump) && !/[0-9a-f]{32}:[0-9a-f]{64}/.test(dump), 'no password hashes in the export');
+});
+
+test('privacy erasure also deletes the customer account', async () => {
+  const email = 'asha@example.com';
+  assert.equal((await authPost('/api/auth/login', { email, password: 'brand-new-pass-1' })).status, 200);
+  assert.equal((await call(`/api/admin/customers/${encodeURIComponent(email)}/erase`, { method: 'POST', body: { confirm: email }, admin: true })).status, 200);
+  assert.equal((await authPost('/api/auth/login', { email, password: 'brand-new-pass-1' })).status, 401, 'account is gone');
 });

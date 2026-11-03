@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Icon } from './Icon.jsx';
 import { useAuth, useCart, useConfig } from '../lib/context.jsx';
-import GoogleSignIn from './GoogleSignIn.jsx';
 
 export function Logo({ name }) {
   return (
@@ -14,7 +13,7 @@ export function Logo({ name }) {
 }
 
 export default function StoreLayout() {
-  const { store_name, support_email, google_client_id } = useConfig();
+  const { store_name, support_email } = useConfig();
   const { user, loading: authLoading } = useAuth();
   const cart = useCart();
   const nav = useNavigate();
@@ -37,17 +36,18 @@ export default function StoreLayout() {
             <NavLink to="/books">Library</NavLink>
             <NavLink to="/books?sort=newest">New releases</NavLink>
             <NavLink to="/books?sort=popular">Bestsellers</NavLink>
+            {!user && !authLoading && <><NavLink to="/login" className="mobile-only">Log in</NavLink><NavLink to="/signup" className="mobile-only">Sign up</NavLink></>}
           </nav>
           <div className="nav-actions">
             <form className="nav-search" onSubmit={search} role="search">
               <Icon name="search" size={16} />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles, authors…" aria-label="Search books" />
             </form>
-            {google_client_id && !authLoading && (user
+            {!authLoading && (user
               ? <Link to="/account" className="icon-btn" aria-label="My account" title={user.name} style={{ padding: 0, overflow: 'hidden' }}>
-                  {user.picture ? <img src={user.picture} alt="" width={36} height={36} referrerPolicy="no-referrer" style={{ borderRadius: '50%' }} /> : <span className="avatar">{user.name[0]}</span>}
+                  {user.picture ? <img src={user.picture} alt="" width={36} height={36} referrerPolicy="no-referrer" style={{ borderRadius: '50%' }} /> : <span className="avatar">{user.name[0].toUpperCase()}</span>}
                 </Link>
-              : <div className="nav-signin"><GoogleSignIn size="medium" text="signin" /></div>)}
+              : <div className="nav-auth"><Link to="/login" className="btn btn-ghost btn-sm">Log in</Link><Link to="/signup" className="btn btn-gold btn-sm">Sign up</Link></div>)}
             <Link to="/cart" className="icon-btn" aria-label={`Cart, ${cart.count} items`}>
               <Icon name="bag" size={18} />
               {cart.count > 0 && <span className="cart-count">{cart.count}</span>}

@@ -7,7 +7,7 @@ const ConfigCtx = createContext({ store_name: 'PrepPath E-books Store' });
 export const useConfig = () => useContext(ConfigCtx);
 
 /* --------------------------------------------------------------- auth */
-const AuthCtx = createContext({ user: null, loading: true, signIn: async () => {}, signOut: async () => {} });
+const AuthCtx = createContext({ user: null, loading: true, signIn: async () => {}, login: async () => {}, register: async () => {}, signOut: async () => {}, setUser: () => {}, reload: async () => {} });
 export const useAuth = () => useContext(AuthCtx);
 
 /* -------------------------------------------------------------- toast */
@@ -31,7 +31,10 @@ export function Providers({ children }) {
   const [authLoading, setAuthLoading] = useState(true);
   useEffect(() => { api('/auth/me').then((r) => setUser(r.user)).catch(() => {}).finally(() => setAuthLoading(false)); }, []);
   const auth = useMemo(() => ({
-    user, loading: authLoading,
+    user, loading: authLoading, setUser,
+    reload: async () => { const r = await api('/auth/me'); setUser(r.user); return r.user; },
+    login: async (email, password) => { const r = await api('/auth/login', { method: 'POST', body: { email, password } }); setUser(r.user); return r.user; },
+    register: async (name, email, password) => { const r = await api('/auth/register', { method: 'POST', body: { name, email, password } }); setUser(r.user); return r; },
     signIn: async (credential) => { const r = await api('/auth/google', { method: 'POST', body: { credential } }); setUser(r.user); return r.user; },
     signOut: async () => { await api('/auth/logout', { method: 'POST' }).catch(() => {}); setUser(null); },
   }), [user, authLoading]);

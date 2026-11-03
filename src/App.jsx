@@ -24,6 +24,7 @@ import CustomerDetail from './admin/CustomerDetail.jsx';
 import System from './admin/System.jsx';
 import Contact from './pages/Contact.jsx';
 import Account from './pages/Account.jsx';
+import { Login, Signup, Forgot, Reset, Verify } from './pages/AuthPages.jsx';
 
 function ScrollTop() {
   const { pathname } = useLocation();
@@ -46,6 +47,11 @@ export default function App() {
           <Route path="invoice/:token" element={<InvoicePage />} />
           <Route path="contact" element={<Contact />} />
           <Route path="account" element={<Account />} />
+          <Route path="login" element={<Login />} />
+          <Route path="signup" element={<Signup />} />
+          <Route path="forgot" element={<Forgot />} />
+          <Route path="reset" element={<Reset />} />
+          <Route path="verify" element={<Verify />} />
           <Route path="*" element={<NotFound />} />
         </Route>
         <Route path="admin/login" element={<AdminLogin />} />

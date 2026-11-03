@@ -292,6 +292,7 @@ export function mountAdmin(admin) {
       const r = (await db.prepare("UPDATE orders SET email = ?, name = 'Erased customer', ip = NULL WHERE email = ?").run(anon, email));
       (await db.prepare("UPDATE feedback SET email = ?, name = 'Erased customer' WHERE email = ?").run(anon, email));
       (await db.prepare('DELETE FROM customer_notes WHERE email = ?').run(email));
+      (await db.prepare('DELETE FROM customers WHERE lower(email) = ?').run(email));
       return r.changes;
     }));
     (await audit(who(req), 'customer.erased', email, `${n} orders anonymised`));
@@ -334,7 +335,7 @@ export function mountAdmin(admin) {
   /** Full data export as JSON (all tables, uploaded file names only). Use your database provider's backups for point-in-time recovery. */
   admin.get('/backup', async (req, res) => {
     const dump = { exported_at: new Date().toISOString(), tables: {} };
-    for (const t of ['books', 'orders', 'order_items', 'coupons', 'settings', 'feedback', 'customers', 'customer_notes', 'audit_log', 'email_log']) dump.tables[t] = await db.prepare(`SELECT * FROM ${t}`).all();
+    for (const t of ['books', 'orders', 'order_items', 'coupons', 'settings', 'feedback', 'customers', 'customer_notes', 'audit_log', 'email_log']) dump.tables[t] = await db.prepare(t === 'customers' ? 'SELECT id, email, name, google_sub, email_verified, created_at, last_login FROM customers' : `SELECT * FROM ${t}`).all(); // never export password hashes
     await audit(who(req), 'backup.downloaded');
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="preppath-export-${new Date().toISOString().slice(0, 10)}.json"`);

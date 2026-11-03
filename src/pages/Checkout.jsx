@@ -85,11 +85,13 @@ export default function Checkout() {
           <div className="card card-pad form-stack">
             <h3 style={{ fontSize: 22 }}>Contact details</h3>
             {user
-              ? <div className="ok-box">Signed in with Google as <b>{user.name}</b> ({user.email}). Your receipt and downloads are tied to this account.</div>
-              : config.google_client_id && (
+              ? <div className="ok-box">Logged in as <b>{user.name}</b> ({user.email}). Your receipt and downloads are tied to this account.</div>
+              : (
                 <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Link to="/login?next=/checkout" className="btn btn-ghost btn-sm">Log in</Link>
+                  <Link to="/signup?next=/checkout" className="btn btn-ghost btn-sm">Sign up</Link>
                   <GoogleSignIn size="medium" text="continue_with" />
-                  <span className="muted" style={{ fontSize: 13 }}>{config.require_login ? 'Sign in to continue.' : 'or continue as a guest below.'}</span>
+                  <span className="muted" style={{ fontSize: 13 }}>{config.require_login ? 'Log in or sign up to continue.' : 'or continue as a guest below.'}</span>
                 </div>
               )}
             <div className="grid-2">

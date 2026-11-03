@@ -140,8 +140,8 @@ app.post('/api/cart/quote', async (req, res) => {
 const checkoutLimiter = rateLimit({ name: 'checkout', windowMs: 10 * 60 * 1000, max: 20, message: 'Too many checkout attempts. Please wait a few minutes and try again.' });
 app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   let { ids = [], coupon, name, email } = req.body || {};
-  if (process.env.REQUIRE_LOGIN_TO_BUY === 'true' && !req.user) return res.status(401).json({ error: 'Please sign in with Google to continue.' });
-  if (req.user) { name = req.user.name; email = req.user.email; } // signed-in customers always buy as their verified Google identity
+  if (process.env.REQUIRE_LOGIN_TO_BUY === 'true' && !req.user) return res.status(401).json({ error: 'Please log in or sign up to continue.' });
+  if (req.user) { name = req.user.name; email = req.user.email; } // logged-in customers always buy as their account identity, never a typed-in one
   if (!name?.trim() || name.length > 120) return res.status(400).json({ error: 'Please enter your full name.' });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) return res.status(400).json({ error: 'Please enter a valid email address.' });
   if (!paymentsEnabled()) return res.status(503).json({ error: 'Online payments are not configured yet. Please contact the store owner.' });
@@ -150,8 +150,8 @@ app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   const token = crypto.randomBytes(20).toString('hex');
   const rzp = await createOrder({ amount: p.total, currency: settings.currency, receipt: token.slice(0, 32), notes: { email: email.trim().toLowerCase() } });
   const orderId = await tx(async () => {
-    const id = await db.insert(`INSERT INTO orders (token,email,name,status,subtotal_cents,discount_cents,tax_cents,total_cents,tax_rate,coupon,payment_method,provider_order_id,created_at,ip)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, token, email.trim().toLowerCase(), name.trim(), 'pending', p.subtotal, p.discount, p.tax, p.total, p.taxRate, p.coupon?.code || null, 'razorpay', rzp.id, new Date().toISOString(), req.ip || null);
+    const id = await db.insert(`INSERT INTO orders (token,email,name,status,subtotal_cents,discount_cents,tax_cents,total_cents,tax_rate,coupon,payment_method,provider_order_id,created_at,ip,customer_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, token, email.trim().toLowerCase(), name.trim(), 'pending', p.subtotal, p.discount, p.tax, p.total, p.taxRate, p.coupon?.code || null, 'razorpay', rzp.id, new Date().toISOString(), req.ip || null, req.user?.id || null);
     for (const bk of p.books) await db.prepare('INSERT INTO order_items (order_id,book_id,title,author,price_cents) VALUES (?,?,?,?,?)').run(id, bk.id, bk.title, bk.author, bk.price_cents);
     return id;
   });

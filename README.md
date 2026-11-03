@@ -54,7 +54,16 @@ The app refuses to start on Vercel without `DATABASE_URL` so orders can never be
 - Prices are exclusive of tax; the configured rate is added at checkout.
 - Live Razorpay/SMTP behaviour is covered by tests against a fake Razorpay and skipped email only; do a real test-mode purchase and test email before launch.
 
-## Customer sign-in with Google
+## Customer accounts: Sign up, Log in, Google
+The header has **Log in** and **Sign up** buttons.
+- **Sign up** (`/signup`): name, email, password (min. 8 chars, scrypt-hashed). A confirmation link is emailed (needs SMTP). Customers can also sign up with Google.
+- **Log in** (`/login`): email + password, or Google. `/forgot` and `/reset` handle password resets by emailed one-hour, single-use link.
+- Accounts with the same email (password + Google) are merged into one.
+- **Order history** shows purchases made while logged in; once the email is confirmed it also shows earlier purchases made as that email. This stops someone registering with another person's address to see their orders.
+- Protections: per-IP and per-account throttling (8 failures lock an account for 15 min), no account enumeration on login/reset, token links are single-use and stored hashed, password hashes are never returned or exported.
+- Guest checkout stays available; `REQUIRE_LOGIN_TO_BUY=true` requires an account.
+
+### Sign-in with Google
 Shoppers can sign in with Google (header button, checkout, reviews, `/account` with order history and re-downloads). The admin panel keeps its own email + password login; Google is never used for it, and a customer session can never access admin routes.
 1. Google Cloud Console -> APIs & Services -> Credentials -> **Create OAuth client ID** -> *Web application*.
 2. Add your site URL (and `http://localhost:5173`, `http://localhost:4000` for local testing) to **Authorised JavaScript origins**. No redirect URI is needed.

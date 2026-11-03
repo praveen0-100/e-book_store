@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, money, fmtDate } from '../lib/api.js';
 import { Icon } from '../components/Icon.jsx';
-import GoogleSignIn from '../components/GoogleSignIn.jsx';
-import { useAuth, useConfig } from '../lib/context.jsx';
+import { useAuth, useToast } from '../lib/context.jsx';
 
 export default function Account() {
   const { user, loading, signOut } = useAuth();
-  const { google_client_id } = useConfig();
+  const toast = useToast();
+  const [resent, setResent] = useState(false);
+  const resend = async () => { try { const r = await api('/auth/resend-verification', { method: 'POST' }); setResent(true); toast(r.email_enabled ? 'Confirmation email sent' : 'Email is not configured on this store yet', r.email_enabled ? 'ok' : 'err'); } catch (e) { toast(e.message, 'err'); } };
   const [orders, setOrders] = useState(null);
   useEffect(() => { setOrders(null); if (user) api('/account/orders').then(setOrders).catch(() => setOrders([])); }, [user]);
 
@@ -16,11 +17,12 @@ export default function Account() {
   if (!user) {
     return (
       <div className="container" style={{ maxWidth: 520, padding: '70px 0 100px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: 34 }}>Sign in</h1>
-        <p className="muted" style={{ margin: '10px 0 28px' }}>Sign in with Google to see your purchases and re-download your e-books on any device.</p>
-        {google_client_id
-          ? <div style={{ display: 'flex', justifyContent: 'center' }}><GoogleSignIn /></div>
-          : <div className="warn-box" style={{ textAlign: 'left' }}><Icon name="alert" size={18} /><span>Sign-in is not available yet.</span></div>}
+        <h1 style={{ fontSize: 34 }}>My account</h1>
+        <p className="muted" style={{ margin: '10px 0 28px' }}>Log in to see your purchases and re-download your e-books on any device.</p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+          <Link to="/login" className="btn btn-gold btn-lg">Log in</Link>
+          <Link to="/signup" className="btn btn-ghost btn-lg">Sign up</Link>
+        </div>
       </div>
     );
   }
@@ -35,6 +37,12 @@ export default function Account() {
         <button className="btn btn-ghost" onClick={signOut}>Sign out</button>
       </div>
 
+      {!user.email_verified && (
+        <div className="warn-box" style={{ marginBottom: 18, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span><b>Confirm your email.</b> Until you do, this page lists only purchases made while you were logged in. Check {user.email} for the link.</span>
+          <button className="btn btn-gold btn-sm" onClick={resend} disabled={resent}>{resent ? 'Sent' : 'Resend email'}</button>
+        </div>
+      )}
       <h2 style={{ fontSize: 22, margin: '10px 0 14px' }}>Your orders</h2>
       {!orders && <div className="skeleton" style={{ height: 140 }} />}
       {orders && !orders.length && <div className="card card-pad muted" style={{ textAlign: 'center', padding: 44 }}>You have no orders yet. <Link to="/books" style={{ color: 'var(--gold)', textDecoration: 'underline' }}>Browse the library</Link></div>}
