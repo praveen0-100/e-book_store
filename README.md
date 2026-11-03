@@ -28,6 +28,9 @@ Production: `npm run build && npm start`, or `docker compose up -d --build` (put
 | **Settings** | Business and tax details (GST name/rate/GSTIN), invoice prefix, approval mode, timezone, currency. |
 | **System** | Integration health and warnings, audit log of every admin action, email delivery log, test email, database backup download, change password. |
 
+## Setting the keys (one command)
+Fill in the Razorpay / SMTP / Google lines in your local `.env`, then run `npm run setup:keys`. It checks each credential against the real service (Razorpay API, a real SMTP login, no email sent), uploads them to Vercel as production variables (secrets marked sensitive) and redeploys. `npm run setup:keys -- --dry` only validates.
+
 ## Payments (Razorpay)
 1. Put `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` in `.env` (`rzp_test_...` first).
 2. Razorpay Dashboard -> Webhooks: URL `https://YOUR-DOMAIN/api/webhooks/razorpay`, events `payment.captured` and `order.paid`, secret = `RAZORPAY_WEBHOOK_SECRET`.
