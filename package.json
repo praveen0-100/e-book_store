@@ -1,0 +1,33 @@
+{
+  "name": "preppath-ebooks-store",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PrepPath E-books Store: full-stack ebook store: **React + Vite (JavaScript)** frontend, **Node/Express** API, **SQLite** database (Node's built-in `node:sqlite`, Node 22.5+, no native builds).",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "vite.config.js",
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"node --env-file-if-exists=.env --watch server/index.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "reset": "node server/reset.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/poppins": "^5.3.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.3.1",
+    "pdfkit": "^0.20.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "vite": "^8.3.5"
+  }
+}

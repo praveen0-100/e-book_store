@@ -1,0 +1,12 @@
+services:
+  store:
+    build: .
+    restart: unless-stopped
+    ports: ["4000:4000"]
+    env_file: .env          # copy .env.example to .env first
+    environment:
+      TRUST_PROXY: "1"      # we assume a reverse proxy (nginx/Caddy) terminates HTTPS in front
+    volumes:
+      - store-data:/data    # database + uploaded e-books + covers: back this up
+volumes:
+  store-data:
