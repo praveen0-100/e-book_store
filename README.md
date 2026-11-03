@@ -1,6 +1,6 @@
 # PrepPath E-books Store
 
-Full-stack e-book store you operate yourself: **React + Vite** storefront and admin console, **Node/Express** API, **SQLite** (built-in `node:sqlite`, Node 22.5+), payments by **Razorpay**, email over **SMTP**, server-generated **PDF tax invoices**.
+Full-stack e-book store you operate yourself: **React + Vite** storefront and admin console, **Node/Express** API, **PostgreSQL** (Neon in production, embedded PGlite locally), **Vercel Blob** file storage, payments by **Razorpay**, email over **SMTP**, server-generated **PDF tax invoices**.
 There is no pre-loaded catalogue: you publish your own e-books.
 
 ## Run
@@ -39,10 +39,17 @@ Set `SMTP_*` in `.env`. Sent automatically: payment received / e-books ready (wi
 ## Security & operations
 - Admin sessions: signed HttpOnly cookie, login rate limit, audit log; `SESSION_SECRET` is mandatory in production.
 - Rate limits on checkout and feedback, honeypot against bots, CSP + security headers, CSV formula-injection guard, upload type allowlist, parameterised SQL, `/api/health`, graceful shutdown.
-- Back up regularly: **System -> Download database backup** plus the `data/files` and `data/covers` folders (the Docker volume `/data` holds everything).
+- Back up regularly: Neon keeps point-in-time history; **System -> Download data export** gives a JSON copy of every table. For Docker/VPS deployments back up the `/data` volume.
+
+## Deploying on Vercel
+1. Project linked to this repo; `api/index.js` + `vercel.json` route `/api/*` to the Express app, the Vite build is served by the CDN.
+2. Add a Postgres database (Vercel Marketplace -> Neon) so `DATABASE_URL` is set, and a private Blob store (`vercel blob create-store NAME --access private`).
+3. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `PUBLIC_URL`, Razorpay, Google and SMTP variables in Project -> Settings -> Environment Variables.
+4. E-books upload straight from the admin browser to Blob (serverless request bodies are capped at 4.5 MB) and are streamed only to paying customers.
+The app refuses to start on Vercel without `DATABASE_URL` so orders can never be lost to an ephemeral disk.
 
 ## Known limits (be aware before scaling)
-- SQLite on one server: right for thousands of orders/day, not for multi-server deployments.
+- Rate limits and admin login throttling are in-memory per serverless instance (best-effort); put Vercel Firewall rules in front for strict limits.
 - Single admin role (no staff permissions yet). Rate limits are in-memory (per process).
 - Prices are exclusive of tax; the configured rate is added at checkout.
 - Live Razorpay/SMTP behaviour is covered by tests against a fake Razorpay and skipped email only; do a real test-mode purchase and test email before launch.
