@@ -89,7 +89,7 @@ function BookForm({ book, onClose, onSaved }) {
               <input type="file" accept=".pdf,.epub,.mobi,.zip" onChange={(e) => setEbook(e.target.files[0] || null)} />
               <span>{ebook ? `Selected: ${ebook.name}` : editing && book.has_file ? `Current file: ${book.ebook_name}` : 'No file yet — upload your PDF/EPUB. A book can only be published once it has a file.'}</span>
             </div>
-            <div style={{ display: 'flex', gap: 28 }}>
+            <div style={{ display: 'flex', gap: '10px 28px', flexWrap: 'wrap' }}>
               <label className="check"><input type="checkbox" checked={f.featured} onChange={set('featured')} /> Featured on homepage</label>
               <label className="check"><input type="checkbox" checked={f.published} onChange={set('published')} /> Published</label>
             </div>
