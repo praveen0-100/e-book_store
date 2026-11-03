@@ -13,7 +13,7 @@ export function securityHeaders(req, res, next) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https://*.razorpay.com https://*.googleusercontent.com",
-    "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com https://accounts.google.com/gsi/ https://*.public.blob.vercel-storage.com https://vercel.com",
+    "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com https://accounts.google.com/gsi/ https://*.blob.vercel-storage.com https://vercel.com",
     "frame-src https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com/gsi/",
     "form-action 'self'",
     "base-uri 'self'",
