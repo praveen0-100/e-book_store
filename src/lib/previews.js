@@ -1,0 +1,18 @@
+/** Free-preview content (3 pages: intro, contents, illustration). Keyed by book slug. Only a taste: never the full text. */
+export const PREVIEWS = {
+  'prompt-smart': {
+    intro: { title: 'Chapter 1: How AI Works', text: ['AI assistants such as ChatGPT, Claude, Gemini and Copilot do not read your mind. They respond to exactly what you write.', 'A vague prompt gets a vague answer; a clear, detailed prompt gets one you can use.'] },
+    contents: [['How AI Works', 'Why your prompt decides the result'], ['The TRACE Formula', 'Five questions that fix most weak prompts'], ['Power Techniques', 'Seven moves that turn good answers into great ones'], ['Email and Messages', 'Say it clearly, kindly and faster'], ['Writing and Content', 'Beat the blank page and polish your drafts'], ['Meetings and Planning', 'Minutes, plans, priorities and decisions'], ['Research and Learning', 'Tutors, quizzes and summaries on demand'], ['Data and Spreadsheets', 'Formulas, clean-up, insights and SQL'], ['Coding and Tech', 'Write, explain, debug and review code'], ['Jobs and Careers', 'Resumes, interviews, offers and growth'], ['Business and Marketing', 'Customers, copy, sales and freelancing'], ['Use AI Safely', 'Five habits that keep you trusted and protected'], ['Your Prompt Library', 'A 30-day plan to make it a habit']],
+    visual: { caption: 'TRACE: five questions every strong prompt answers' },
+  },
+  'quantum-computing-decoded': {
+    intro: { title: 'Chapter 1: Why It Matters', text: ['A quantum computer is not a faster laptop. It is a different kind of machine that uses the rules of quantum physics to tackle problems that would keep an ordinary computer busy for longer than the age of the universe.'] },
+    contents: [['Why It Matters', 'What a quantum computer is, and what it is not'], ['A Short History', 'From Feynman’s 1981 idea to cloud quantum computers'], ['Qubits', 'Superposition, measurement and the Bloch sphere'], ['Entanglement', 'Spooky links and wave interference'], ['Gates and Circuits', 'The building blocks of every quantum program'], ['Building Qubits', 'Six technologies, one race, and a very cold fridge'], ['Algorithms', 'Shor, Grover, simulation and hybrid methods'], ['Noise and Errors', 'Why qubits fail, and how error correction fights back'], ['Quantum in 2026', 'Milestones, claims and the race to fault tolerance'], ['Cryptography', 'Why the internet is switching to quantum-safe encryption'], ['India’s Quantum Push', 'The National Quantum Mission and India’s quantum machines'], ['30 Surprising Facts', 'Strange physics, remarkable machines and surprising history'], ['Start Learning', 'Your first quantum program and a 4-week plan']],
+    visual: { caption: 'The Bloch sphere: every state a qubit can be in' },
+  },
+  'business-entrepreneurship': {
+    intro: { title: 'Chapter 1: Start Your First Online Business', text: ['You do not need a big idea, a team or a lot of money to begin. You need a real problem, a simple offer and the courage to show it to a few people.', 'This chapter walks you from idea to first sale.'] },
+    contents: [['Start Your First Online Business', 'From a rough idea to your first sale'], ['The Beginner’s Startup Blueprint', 'One page that turns an idea into a plan'], ['Digital Product Business Guide', 'Make once, sell many times'], ['Building a Personal Brand', 'Be known for something, and be trusted for it'], ['Small Business Marketing Strategies', 'Get noticed, earn trust, win customers'], ['How to Build a Business with AI', 'Use AI as your assistant, not your replacement']],
+    visual: { caption: 'Your personal brand in four layers' },
+  },
+};

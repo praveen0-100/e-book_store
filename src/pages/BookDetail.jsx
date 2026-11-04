@@ -6,6 +6,7 @@ import BookCard, { Stars } from '../components/BookCard.jsx';
 import { Icon } from '../components/Icon.jsx';
 import { useCart, useToast } from '../lib/context.jsx';
 import NotFound from './NotFound.jsx';
+import BookPreview from '../components/BookPreview.jsx';
 import Reviews from '../components/Reviews.jsx';
 
 export default function BookDetail() {
@@ -64,6 +65,8 @@ export default function BookDetail() {
           <p className="prose">{book.description || 'No description provided.'}</p>
         </div>
       </div>
+
+      <BookPreview book={book} />
 
       <Reviews book={book} />
 
