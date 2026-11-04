@@ -31,7 +31,7 @@ export default function Checkout() {
   const [f, setF] = useState({ name: '', email: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [method, setMethod] = useState('razorpay'); // 'razorpay' | 'upi'
+  const [method, setMethod] = useState('razorpay'); // 'razorpay' (all methods) | 'upiid' (customer enters their UPI ID) | 'upi' (manual QR)
   const [utr, setUtr] = useState('');
   const [qr, setQr] = useState('');
   const upi = method === 'upi' && !!config.upi_id;
@@ -71,6 +71,8 @@ export default function Checkout() {
         description: `Order ${o.number}`,
         prefill: { name: user ? user.name : f.name, email: user ? user.email : f.email },
         theme: { color: '#d4af6a' },
+        // 'upiid': show only the UPI block, where the customer types their UPI ID and approves the request in their UPI app
+        ...(method === 'upiid' ? { config: { display: { blocks: { upi: { name: 'Pay with your UPI ID', instruments: [{ method: 'upi' }] } }, sequence: ['block.upi'], preferences: { show_default_blocks: false } } } } : {}),
         modal: { ondismiss: () => setBusy(false) },
         handler: async (r) => {
           try {
@@ -120,13 +122,15 @@ export default function Checkout() {
               <h3 style={{ fontSize: 22 }}>Payment</h3>
               {!upi && <span className="badge green"><Icon name="lock" size={12} /> Secured by Razorpay</span>}
             </div>
-            {config.upi_id && (
+            {config.payments_enabled && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" className={`chip ${!upi ? 'active' : ''}`} onClick={() => setMethod('razorpay')}>Card / UPI / Netbanking</button>
-                <button type="button" className={`chip ${upi ? 'active' : ''}`} onClick={() => setMethod('upi')}>Pay by UPI QR</button>
+                <button type="button" className={`chip ${method === 'razorpay' ? 'active' : ''}`} onClick={() => setMethod('razorpay')}>Card / Netbanking / Wallet</button>
+                <button type="button" className={`chip ${method === 'upiid' ? 'active' : ''}`} onClick={() => setMethod('upiid')}>Pay with UPI ID</button>
+                {config.upi_id && <button type="button" className={`chip ${upi ? 'active' : ''}`} onClick={() => setMethod('upi')}>Pay by UPI QR</button>}
               </div>
             )}
-            {!upi && (
+            {method === 'upiid' && <p className="muted" style={{ fontSize: 14 }}>Click <b>Pay now</b>, enter your UPI ID (like <i>name@okhdfcbank</i>) and approve the request in your UPI app. Payment is confirmed automatically — no waiting.</p>}
+            {method === 'razorpay' && (
               <p className="muted" style={{ fontSize: 14 }}>
                 Click <b>Pay now</b> to open the secure payment window. Pay with UPI, credit/debit card, net banking or wallet.
                 Your card details are entered with Razorpay and never reach our servers.
