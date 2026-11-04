@@ -19,6 +19,15 @@ export default function OrderPage() {
     return () => clearInterval(t);
   }, [pending, token]);
 
+  // Meta Pixel Purchase event: once per order, only right after checkout (?new), with the real total.
+  const paidNew = !!order && order.status === 'paid' && !!params.get('new');
+  useEffect(() => {
+    if (!paidNew || typeof window.fbq !== 'function') return;
+    const key = `fbq-purchase-${token}`;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* storage blocked: still track once per mount */ }
+    window.fbq('track', 'Purchase', { value: order.total_cents / 100, currency: 'INR', content_type: 'product' });
+  }, [paidNew, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (missing) return <NotFound />;
   if (!order) return <div className="container" style={{ padding: 80 }}><div className="skeleton" style={{ height: 300 }} /></div>;
   if (pending) {
