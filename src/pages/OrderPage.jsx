@@ -20,7 +20,7 @@ export default function OrderPage() {
   }, [pending, token]);
 
   // Meta Pixel Purchase event: once per order, only right after checkout (?new), with the real total.
-  const paidNew = !!order && order.status === 'paid' && !!params.get('new');
+  const paidNew = !!order && order.status === 'paid' && order.payment_method !== 'upi_qr' && !!params.get('new'); // manual UPI orders are unverified, so no ad conversion yet
   useEffect(() => {
     if (!paidNew || typeof window.fbq !== 'function') return;
     const key = `fbq-purchase-${token}`;

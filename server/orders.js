@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { db, tx, getSettings, audit, nextInvoiceNo } from './db.js';
 import { describePayment, refundPayment } from './payments.js';
 import { sendMail, layout, esc, publicUrl } from './mailer.js';
@@ -46,7 +47,7 @@ async function mailInvoice(o) {
 async function mailRejected(o, reason) {
   await sendMail({
     to: o.email, kind: 'payment-rejected', subject: `Order ${orderNumber(o.id)} could not be completed`,
-    html: layout('Your order could not be completed', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>We were unable to approve your order${reason ? `: <i>${esc(reason)}</i>` : ''}. Your payment has been refunded in full and should reach your account within 5–7 working days.</p>`),
+    html: layout('Your order could not be completed', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>We were unable to approve your order${reason ? `: <i>${esc(reason)}</i>` : ''}. ${o.payment_method === 'upi_qr' ? 'If any money was deducted, we will refund it to your UPI account — please contact us with your payment reference.' : 'Your payment has been refunded in full and should reach your account within 5–7 working days.'}</p>`),
   });
 }
 async function mailRefunded(o) {
@@ -97,8 +98,10 @@ export async function approvePayment(id, actor) {
   if (o.approval_status === 'approved') throw httpErr('This payment is already approved.');
   (await db.prepare("UPDATE orders SET approval_status='approved', approved_at=?, approved_by=?, reject_reason=NULL WHERE id=?").run(new Date().toISOString(), actor, o.id));
   (await audit(actor, 'payment.approved', orderNumber(o.id)));
+  const manualUpi = o.payment_method === 'upi_qr'; // one approval does everything for a hand-verified UPI payment
+  if (manualUpi) (await tx(async () => (await issueInvoiceTx(o.id, actor))));
   const fresh = (await getOrder(id));
-  (await mailDelivered(fresh, false).catch((e) => console.error(e)));
+  (await mailDelivered(fresh, manualUpi).catch((e) => console.error(e)));
   return fresh;
 }
 
@@ -107,7 +110,7 @@ export async function rejectPayment(id, actor, reason) {
   const o = (await getOrder(id));
   if (!o || o.status !== 'paid') throw httpErr('Only paid orders can be rejected.');
   if (o.approval_status === 'rejected') throw httpErr('Already rejected.');
-  if (o.payment_ref) await refundPayment(o.payment_ref, o.total_cents);
+  if (o.payment_ref && o.payment_method !== 'upi_qr') await refundPayment(o.payment_ref, o.total_cents); // manual UPI payments are refunded by the owner from their UPI app
   (await db.prepare("UPDATE orders SET status='refunded', refunded_at=?, approval_status='rejected', approved_by=?, approved_at=?, reject_reason=?, invoice_status='void' WHERE id=?")
     .run(new Date().toISOString(), actor, new Date().toISOString(), String(reason || '').slice(0, 300), o.id));
   (await audit(actor, 'payment.rejected', orderNumber(o.id), reason || ''));
@@ -133,7 +136,7 @@ export async function refundOrder(id, actor) {
   const o = (await getOrder(id));
   if (!o) throw httpErr('Order not found', 404);
   if (o.status !== 'paid') throw httpErr('Only paid orders can be refunded.');
-  if (o.payment_ref) await refundPayment(o.payment_ref, o.total_cents);
+  if (o.payment_ref && o.payment_method !== 'upi_qr') await refundPayment(o.payment_ref, o.total_cents);
   (await db.prepare("UPDATE orders SET status='refunded', refunded_at=? WHERE id=?").run(new Date().toISOString(), o.id));
   (await audit(actor, 'order.refunded', orderNumber(o.id), (o.total_cents / 100).toFixed(2)));
   const fresh = (await getOrder(id));
@@ -146,4 +149,24 @@ export async function resendOrderEmail(id, actor) {
   if (!o || o.status === 'pending') throw httpErr('Order not found', 404);
   (await audit(actor, 'order.email-resent', orderNumber(o.id)));
   if (o.invoice_status === 'issued') await mailInvoice(o); else await mailReceived(o);
+}
+
+/**
+ * Manual UPI QR checkout: the customer paid by scanning our QR and typed the 12-digit UPI reference (UTR).
+ * The order is stored as paid-but-unapproved, so downloads stay locked until the owner checks the payment and approves it.
+ */
+export async function placeUpiOrder({ books, p, name, email, utr, ip, customerId }) {
+  const token = crypto.randomBytes(20).toString('hex');
+  const id = await tx(async () => {
+    if (await db.prepare('SELECT 1 FROM orders WHERE payment_ref = ?').get(utr)) throw httpErr('That UPI reference number has already been used on another order.');
+    const oid = await db.insert(`INSERT INTO orders (token,email,name,status,subtotal_cents,discount_cents,tax_cents,total_cents,tax_rate,coupon,payment_method,card_brand,payment_ref,approval_status,invoice_status,created_at,ip,customer_id)
+      VALUES (?,?,?,'paid',?,?,?,?,?,?,'upi_qr','UPI QR',?,'pending','pending',?,?,?)`, token, email, name, p.subtotal, p.discount, p.tax, p.total, p.taxRate, p.coupon?.code || null, utr, new Date().toISOString(), ip || null, customerId || null);
+    for (const bk of books) await db.prepare('INSERT INTO order_items (order_id,book_id,title,author,price_cents) VALUES (?,?,?,?,?)').run(oid, bk.id, bk.title, bk.author, bk.price_cents);
+    if (p.coupon) await db.prepare('UPDATE coupons SET uses = uses + 1 WHERE code = ?').run(p.coupon.code);
+    return oid;
+  });
+  await audit('system', 'payment.upi-submitted', orderNumber(id), `UTR ${utr} ${(p.total / 100).toFixed(2)}`);
+  const fresh = await getOrder(id);
+  await mailReceived(fresh).catch((e) => console.error(e));
+  return fresh;
 }

@@ -51,7 +51,7 @@ export default function OrderDetail() {
 
         {awaitingPayment && (
           <div className="warn-box" style={{ marginBottom: 16, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span><b>Payment awaiting your approval.</b> The money is captured; the customer cannot download until you approve.</span>
+            <span><b>Payment awaiting your approval.</b> {o.payment_method === 'upi_qr' ? `Manual UPI payment — check your UPI app for ${money(o.total_cents)} with reference ${o.payment_ref} before approving.` : 'The money is captured; the customer cannot download until you approve.'}</span>
             <span style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-gold btn-sm" disabled={busy} onClick={() => run('approve-payment', undefined, 'Payment approved — customer notified')}><Icon name="check" size={15} /> Approve payment</button>
               <button className="btn btn-danger btn-sm" onClick={() => setMode('reject')}>Reject &amp; refund</button>
@@ -67,7 +67,7 @@ export default function OrderDetail() {
         {mode && (
           <div className="card card-pad form-stack" style={{ marginBottom: 16, maxWidth: 560 }}>
             <h3 style={{ fontSize: 18 }}>{mode === 'refund' ? 'Refund' : 'Reject and refund'} {money(o.total_cents)}?</h3>
-            <p className="muted" style={{ fontSize: 13.5 }}>The full amount goes back to the customer through Razorpay and they are emailed. This cannot be undone.</p>
+            <p className="muted" style={{ fontSize: 13.5 }}>{o.payment_method === 'upi_qr' ? 'This was a manual UPI payment: refund the money yourself from your UPI app. The customer is emailed and downloads are closed. This cannot be undone.' : 'The full amount goes back to the customer through Razorpay and they are emailed. This cannot be undone.'}</p>
             {mode === 'reject' && <div className="field"><label>Reason (shown to the customer)</label><textarea className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} /></div>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn btn-danger" disabled={busy} onClick={() => (mode === 'refund' ? run('refund', undefined, 'Order refunded') : run('reject-payment', { reason }, 'Payment rejected and refunded'))}>{busy ? <span className="spinner" /> : 'Confirm'}</button>

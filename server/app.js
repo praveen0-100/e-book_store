@@ -10,7 +10,7 @@ import { COOKIE, makeSession, requireAdmin, verifyPassword, readSession, attachU
 import { googleEnabled, googleClientId } from './google.js';
 import { mountAuth } from './routes-auth.js';
 import { paymentsEnabled, keyId, createOrder, verifyCheckoutSignature, verifyWebhookSignature, fetchPayment } from './payments.js';
-import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder } from './orders.js';
+import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder, placeUpiOrder } from './orders.js';
 import { mountPublic, mountAdmin, dayStartISO, tzMinutes, localDateOf, localDowOf } from './routes-extra.js';
 import { securityHeaders, rateLimit, requestLog } from './security.js';
 import { blobMode, saveCover, removeFile, sendCover, sendEbook, checkUploadedEbook, EBOOK_EXT, COVER_EXT } from './storage.js';
@@ -73,7 +73,7 @@ const httpErr = (message, status = 400) => Object.assign(new Error(message), { s
 /* ---------------------------------------------------------------- public */
 app.get('/api/config', (req, res) => {
   const s = getSettings();
-  res.json({ store_name: s.store_name, currency: s.currency, tax_rate: Number(s.tax_rate), support_email: s.support_email, payments_enabled: paymentsEnabled(), google_client_id: googleEnabled() ? googleClientId() : null, require_login: process.env.REQUIRE_LOGIN_TO_BUY === 'true' });
+  res.json({ store_name: s.store_name, currency: s.currency, tax_rate: Number(s.tax_rate), support_email: s.support_email, payments_enabled: paymentsEnabled(), upi_id: process.env.UPI_ID || null, upi_name: process.env.UPI_NAME || getSettings().store_name, google_client_id: googleEnabled() ? googleClientId() : null, require_login: process.env.REQUIRE_LOGIN_TO_BUY === 'true' });
 });
 
 app.get('/api/books', async (req, res) => {
@@ -156,6 +156,21 @@ app.post('/api/checkout', checkoutLimiter, async (req, res) => {
     return id;
   });
   res.json({ token, number: orderNumber(orderId), key_id: keyId(), razorpay_order_id: rzp.id, amount: p.total, currency: settings.currency, store_name: settings.store_name });
+});
+
+/** Manual UPI QR payment: customer scanned our QR and sends the UPI reference; the owner approves it in the admin panel. */
+app.post('/api/checkout/upi', checkoutLimiter, async (req, res) => {
+  if (!process.env.UPI_ID) return res.status(503).json({ error: 'UPI QR payment is not available right now.' });
+  let { ids = [], coupon, name, email, utr } = req.body || {};
+  if (process.env.REQUIRE_LOGIN_TO_BUY === 'true' && !req.user) return res.status(401).json({ error: 'Please log in or sign up to continue.' });
+  if (req.user) { name = req.user.name; email = req.user.email; }
+  if (!name?.trim() || name.length > 120) return res.status(400).json({ error: 'Please enter your full name.' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) return res.status(400).json({ error: 'Please enter a valid email address.' });
+  utr = String(utr || '').replace(/\s/g, '');
+  if (!/^\d{12}$/.test(utr)) return res.status(400).json({ error: 'Enter the 12-digit UPI reference number (UTR) shown in your UPI app after paying.' });
+  const p = await priceCart(ids, coupon);
+  const o = await placeUpiOrder({ books: p.books, p, name: name.trim(), email: email.trim().toLowerCase(), utr, ip: req.ip, customerId: req.user?.id });
+  res.json({ token: o.token, number: orderNumber(o.id) });
 });
 
 /** Step 2: the browser reports a finished payment; we verify the signature and re-check it with Razorpay. */
