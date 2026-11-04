@@ -33,7 +33,6 @@ export default function BookCard({ book }) {
         <div className="author">{book.author}</div>
         <div className="row">
           <div>
-            <Stars rating={book.rating} />
             <div className="price">{money(book.price_cents)}{onSale && <s>{money(book.compare_cents)}</s>}</div>
           </div>
           <button className={`add-btn ${inCart ? 'in' : ''}`} onClick={add} aria-label={inCart ? 'In cart' : `Add ${book.title} to cart`}>

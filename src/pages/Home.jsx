@@ -15,7 +15,7 @@ export default function Home() {
   }, []);
 
   const featured = books?.filter((b) => b.featured) ?? [];
-  const best = books ? [...books].sort((a, b) => b.reviews - a.reviews).slice(0, 4) : [];
+  const best = books ? [...books].slice(0, 4) : [];
   const fresh = books ? [...books].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4) : [];
 
   return (
@@ -23,7 +23,7 @@ export default function Home() {
       <section className="banner-section">
         <div className="container">
           <div className="banner">
-            <p className="tagline">Learn smarter. <span>Start sooner.</span><br />Grow further.</p>
+            <p className="tagline"><span>Learn smarter.</span> <span className="w">Start sooner.</span><br /><span>Grow further.</span></p>
           </div>
         </div>
       </section>

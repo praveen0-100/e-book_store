@@ -45,7 +45,6 @@ export default function Catalog() {
             <option value="featured">Featured</option>
             <option value="popular">Most popular</option>
             <option value="newest">Newest</option>
-            <option value="rating">Top rated</option>
             <option value="price-asc">Price: low to high</option>
             <option value="price-desc">Price: high to low</option>
           </select>

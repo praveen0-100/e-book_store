@@ -2,12 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, money } from '../lib/api.js';
 import BookCover from '../components/BookCover.jsx';
-import BookCard, { Stars } from '../components/BookCard.jsx';
+import BookCard from '../components/BookCard.jsx';
 import { Icon } from '../components/Icon.jsx';
 import { useCart, useToast } from '../lib/context.jsx';
 import NotFound from './NotFound.jsx';
 import BookPreview from '../components/BookPreview.jsx';
-import Reviews from '../components/Reviews.jsx';
 
 export default function BookDetail() {
   const { slug } = useParams();
@@ -37,7 +36,7 @@ export default function BookDetail() {
           <Link to={`/books?category=${encodeURIComponent(book.category)}`} className="eyebrow">{book.category}</Link>
           <h1>{book.title}</h1>
           {book.subtitle && <p className="subtitle">{book.subtitle}</p>}
-          <p style={{ margin: '14px 0' }} className="muted">by <b style={{ color: 'var(--text)' }}>{book.author}</b> &nbsp;·&nbsp; <Stars rating={book.rating} reviews={book.reviews} /></p>
+          <p style={{ margin: '14px 0' }} className="muted">by <b style={{ color: 'var(--text)' }}>{book.author}</b></p>
 
           <div className="card buy-box">
             <div className="big-price">{money(book.price_cents)}{onSale && <s>{money(book.compare_cents)}</s>}</div>
@@ -67,8 +66,6 @@ export default function BookDetail() {
       </div>
 
       <BookPreview book={book} />
-
-      <Reviews book={book} />
 
       {book.related?.length > 0 && (
         <section style={{ padding: '40px 0 80px' }}>
