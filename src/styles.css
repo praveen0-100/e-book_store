@@ -244,7 +244,7 @@ select.input option { background: #14141c; }
 .specs div { background: #0d0d14; padding: 16px; }
 .specs small { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
 .specs b { font-size: 15px; }
-.prose { color: #cbc7bd; font-size: 16.5px; line-height: 1.8; max-width: 66ch; }
+.prose { white-space: pre-line; color: #cbc7bd; font-size: 16.5px; line-height: 1.8; max-width: 66ch; }
 
 /* ------------------------------------------------------------ cart / checkout */
 .two-col { display: grid; grid-template-columns: 1fr 400px; gap: 36px; align-items: start; padding-bottom: 60px; }
