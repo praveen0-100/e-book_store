@@ -13,7 +13,7 @@ import { FILES_DIR, COVERS_DIR } from './db.js';
  * A stored key is either a plain filename (local) or "blob:<pathname>" (Vercel Blob).
  */
 export const blobMode = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-export const EBOOK_EXT = ['.pdf', '.epub', '.mobi', '.zip'];
+export const EBOOK_EXT = ['.pdf', '.epub', '.mobi', '.zip', '.docx'];
 export const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 const COVER_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
 

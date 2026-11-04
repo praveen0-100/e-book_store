@@ -55,7 +55,7 @@ const upload = multer({
     const bad = (m) => cb(Object.assign(new Error(m), { status: 400 }), false);
     if (file.fieldname === 'cover') return COVER_EXT.includes(ext) ? cb(null, true) : bad('Cover must be a JPG, PNG or WebP image.');
     if (blobMode) return bad('E-book files are uploaded directly to storage.');
-    return EBOOK_EXT.includes(ext) ? cb(null, true) : bad('E-book must be a PDF, EPUB, MOBI or ZIP file.');
+    return EBOOK_EXT.includes(ext) ? cb(null, true) : bad('E-book must be a PDF, EPUB, MOBI, DOCX or ZIP file.');
   },
 });
 
@@ -243,7 +243,7 @@ app.post('/api/admin/blob-upload', async (req, res) => {
   const json = await handleUpload({
     body: req.body, request: req,
     onBeforeGenerateToken: async (pathname) => {
-      if (!/^ebooks\/[A-Za-z0-9._-]+$/.test(pathname) || !EBOOK_EXT.includes(path.extname(pathname).toLowerCase())) throw httpErr('E-book must be a PDF, EPUB, MOBI or ZIP file.');
+      if (!/^ebooks\/[A-Za-z0-9._-]+$/.test(pathname) || !EBOOK_EXT.includes(path.extname(pathname).toLowerCase())) throw httpErr('E-book must be a PDF, EPUB, MOBI, DOCX or ZIP file.');
       return { maximumSizeInBytes: 500 * 1024 * 1024, addRandomSuffix: true, allowOverwrite: false };
     },
     onUploadCompleted: async () => {},

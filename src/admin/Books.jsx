@@ -86,7 +86,7 @@ function BookForm({ book, onClose, onSaved }) {
             </div>
             <div className="field"><label>Description</label><textarea className="input" value={f.description} onChange={set('description')} /></div>
             <div className="upload"><span className="label">Ebook file (PDF / EPUB / MOBI) — delivered to buyers</span>
-              <input type="file" accept=".pdf,.epub,.mobi,.zip" onChange={(e) => setEbook(e.target.files[0] || null)} />
+              <input type="file" accept=".pdf,.epub,.mobi,.zip,.docx" onChange={(e) => setEbook(e.target.files[0] || null)} />
               <span>{ebook ? `Selected: ${ebook.name}` : editing && book.has_file ? `Current file: ${book.ebook_name}` : 'No file yet — upload your PDF/EPUB. A book can only be published once it has a file.'}</span>
             </div>
             <div style={{ display: 'flex', gap: '10px 28px', flexWrap: 'wrap' }}>
