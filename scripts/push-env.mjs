@@ -14,8 +14,8 @@ import { spawnSync } from 'node:child_process';
 import nodemailer from 'nodemailer';
 
 const DRY = process.argv.includes('--dry');
-const NAMES = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'GOOGLE_CLIENT_ID', 'REQUIRE_LOGIN_TO_BUY', 'UPI_ID', 'UPI_NAME', 'SUPPORT_EMAIL', 'BUSINESS_ADDRESS'];
-const SECRET = new Set(['RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'SMTP_PASS']);
+const NAMES = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'GOOGLE_CLIENT_ID', 'REQUIRE_LOGIN_TO_BUY', 'UPI_ID', 'UPI_NAME', 'SUPPORT_EMAIL', 'BUSINESS_ADDRESS', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'];
+const SECRET = new Set(['ADMIN_PASSWORD', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'SMTP_PASS']);
 
 const parse = (text) => Object.fromEntries(text.split(/\r?\n/).map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)).filter(Boolean).map(([, k, v]) => [k, v.replace(/^(["'])(.*)\1$/, '$2')]));
 const env = fs.existsSync('.env') ? parse(fs.readFileSync('.env', 'utf8')) : {};

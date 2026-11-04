@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { fileURLToPath } from 'node:url';
-import { hashPassword } from './auth.js';
+import { hashPassword, verifyPassword } from './auth.js';
 
 /**
  * Database layer: PostgreSQL everywhere.
@@ -306,13 +306,20 @@ async function init() {
     await driver.exec(SCHEMA);
   }
   for (const m of MIGRATIONS) { try { await driver.exec(m); } catch (e) { console.error('migration skipped:', m, '-', e.message); } }
-  if (!(await db.prepare('SELECT COUNT(*) c FROM admins').get()).c) {
-    const email = (process.env.ADMIN_EMAIL || 'admin@preppath.store').trim().toLowerCase();
-    const pass = process.env.ADMIN_PASSWORD || 'admin123';
-    if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_PASSWORD) {
+  // ADMIN_EMAIL / ADMIN_PASSWORD are the source of truth for the (first) admin account: create it, or update it when they change.
+  const envEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const envPass = process.env.ADMIN_PASSWORD || '';
+  const first = await db.prepare('SELECT * FROM admins ORDER BY id LIMIT 1').get();
+  if (!first) {
+    const email = envEmail || 'admin@preppath.store';
+    const pass = envPass || 'admin123';
+    if (process.env.NODE_ENV === 'production' && !envPass) {
       console.warn('WARNING: ADMIN_PASSWORD is not set; using the insecure default password. Set it before going live.');
     }
     await db.prepare('INSERT INTO admins (email,name,password_hash) VALUES (?,?,?) ON CONFLICT (email) DO NOTHING').run(email, 'Admin', hashPassword(pass));
+  } else if (envEmail && envPass && (first.email !== envEmail || !verifyPassword(envPass, first.password_hash))) {
+    await db.prepare('UPDATE admins SET email = ?, password_hash = ? WHERE id = ?').run(envEmail, hashPassword(envPass), first.id);
+    console.log('Admin account updated from ADMIN_EMAIL / ADMIN_PASSWORD.');
   }
   await loadSettings(true);
 }
