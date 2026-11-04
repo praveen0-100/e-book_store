@@ -9,11 +9,11 @@ export function securityHeaders(req, res, next) {
   // Razorpay Checkout + Google Fonts are the only third parties the storefront needs.
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' https://checkout.razorpay.com https://accounts.google.com/gsi/client",
+    "script-src 'self' https://checkout.razorpay.com https://accounts.google.com/gsi/client https://connect.facebook.net",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://*.razorpay.com https://*.googleusercontent.com",
-    "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com https://accounts.google.com/gsi/ https://*.blob.vercel-storage.com https://vercel.com",
+    "img-src 'self' data: blob: https://*.razorpay.com https://*.googleusercontent.com https://www.facebook.com",
+    "connect-src 'self' https://www.facebook.com https://connect.facebook.net https://*.razorpay.com https://lumberjack.razorpay.com https://accounts.google.com/gsi/ https://*.blob.vercel-storage.com https://vercel.com",
     "frame-src https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com/gsi/",
     "form-action 'self'",
     "base-uri 'self'",
