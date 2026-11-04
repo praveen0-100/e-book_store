@@ -23,6 +23,7 @@ import Feedback from './admin/Feedback.jsx';
 import CustomerDetail from './admin/CustomerDetail.jsx';
 import System from './admin/System.jsx';
 import Contact from './pages/Contact.jsx';
+import { Privacy, Terms, Refund } from './pages/Legal.jsx';
 import Account from './pages/Account.jsx';
 import { Login, Signup, Forgot, Reset, Verify } from './pages/AuthPages.jsx';
 
@@ -46,6 +47,9 @@ export default function App() {
           <Route path="order/:token" element={<OrderPage />} />
           <Route path="invoice/:token" element={<InvoicePage />} />
           <Route path="contact" element={<Contact />} />
+          <Route path="privacy" element={<Privacy />} />
+          <Route path="terms" element={<Terms />} />
+          <Route path="refund-policy" element={<Refund />} />
           <Route path="account" element={<Account />} />
           <Route path="login" element={<Login />} />
           <Route path="signup" element={<Signup />} />

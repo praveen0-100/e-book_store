@@ -68,6 +68,7 @@ export default function StoreLayout() {
             </div>
             <div><h4>Shop</h4><Link to="/books">All books</Link><Link to="/books?sort=newest">New releases</Link><Link to="/books?sort=popular">Bestsellers</Link></div>
                         <div><h4>Support</h4><Link to="/contact">Contact &amp; feedback</Link>{support_email && <a href={`mailto:${support_email}`}>{support_email}</a>}<Link to="/account">My account</Link><Link to="/cart">Your cart</Link></div>
+            <div><h4>Legal</h4><Link to="/privacy">Privacy Policy</Link><Link to="/terms">Terms &amp; Conditions</Link><Link to="/refund-policy">Refund Policy</Link></div>
           </div>
           <div className="footer-bottom">
             <span>© {new Date().getFullYear()} {store_name}. All rights reserved.</span>
