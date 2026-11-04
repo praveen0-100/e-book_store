@@ -22,26 +22,12 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero">
-        <div className="container hero-grid">
-          <div className="fade-in">
-            <span className="eyebrow">E-books published by PrepPath</span>
-            <h1>Ideas worth <span className="gold-text">keeping.</span></h1>
-            <p className="lead">{store_name} publishes e-books to help you prepare, learn and grow. Pay once, download instantly, read on any device — forever.</p>
-            <div className="hero-cta">
-              <Link to="/books" className="btn btn-gold btn-lg">Browse the library <Icon name="arrow" size={18} /></Link>
-              <Link to="/books?sort=popular" className="btn btn-ghost btn-lg">Bestsellers</Link>
-            </div>
-            <div className="hero-stats">
-              <div><b>{books ? books.length : '—'}</b><span>Titles</span></div>
-              <div><b>{cats.length || '—'}</b><span>Topics</span></div>
-              <div><b>PDF</b><span>Instant download</span></div>
-            </div>
-          </div>
-          <div className="hero-stage" aria-hidden="true">
+      <section className="hero hero-books">
+        <div className="container">
+          <Link to="/books" className="hero-stage" aria-label="Browse the library">
             <div className="hero-glow" />
             {hero.map((b, i) => <BookCover key={b.id} book={b} className={`c${i + 1}`} />)}
-          </div>
+          </Link>
         </div>
       </section>
 
