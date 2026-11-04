@@ -268,6 +268,7 @@ export async function loadSettings(force = false) {
   settingsCache = { ...DEFAULT_SETTINGS };
   for (const r of rows) settingsCache[r.key] = r.value;
   if (!settingsCache.support_email) settingsCache.support_email = process.env.SUPPORT_EMAIL || ''; // deployment-level fallback when the admin field is empty
+  if (!settingsCache.address) settingsCache.address = process.env.BUSINESS_ADDRESS || '';
   settingsAt = Date.now();
   return settingsCache;
 }
