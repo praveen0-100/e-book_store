@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Icon } from '../components/Icon.jsx';
-import BookCover from '../components/BookCover.jsx';
 import BookCard, { BookGridSkeleton } from '../components/BookCard.jsx';
 import { useConfig } from '../lib/context.jsx';
 
@@ -16,7 +15,6 @@ export default function Home() {
   }, []);
 
   const featured = books?.filter((b) => b.featured) ?? [];
-  const hero = featured.slice(0, 3);
   const best = books ? [...books].sort((a, b) => b.reviews - a.reviews).slice(0, 4) : [];
   const fresh = books ? [...books].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4) : [];
 
@@ -24,9 +22,9 @@ export default function Home() {
     <>
       <section className="banner-section">
         <div className="container">
-          <Link to="/books" className="banner" aria-label="Browse the library">
-            {hero.map((b) => <BookCover key={b.id} book={b} />)}
-          </Link>
+          <div className="banner">
+            <p className="tagline">Learn smarter. <span>Start sooner.</span><br />Grow further.</p>
+          </div>
         </div>
       </section>
 
