@@ -148,16 +148,12 @@ select.input option { background: #14141c; }
 .hero-stage .c3 { left: 40%; top: 200px; width: 50%; transform: rotateY(-20deg) rotateZ(10deg); animation: float 9s ease-in-out -4s infinite; }
 .hero-glow { position: absolute; width: 480px; height: 480px; border-radius: 50%; background: radial-gradient(circle, rgba(212, 175, 106, 0.28), transparent 65%); right: 5%; top: 5%; filter: blur(30px); }
 @keyframes float { 50% { translate: 0 -16px; } }
-/* Home hero: just the floating books */
-.hero-books { padding: 60px 0 50px; }
-.hero-books .hero-stage { display: block; height: 560px; max-width: 760px; margin: 0 auto; }
-.hero-books .hero-stage .cover { width: 38%; transition: scale 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.hero-books .hero-stage:hover .cover { scale: 1.03; }
-.hero-books .hero-stage .c1 { left: 8%; top: 70px; transform: rotateY(16deg) rotateZ(-6deg); }
-.hero-books .hero-stage .c2 { left: 50%; top: 20px; transform: rotateY(-12deg) rotateZ(5deg); }
-.hero-books .hero-stage .c3 { left: 30%; top: 250px; width: 34%; }
-.hero-books .hero-glow { right: auto; left: 50%; margin-left: -240px; top: 6%; }
-@media (max-width: 720px) { .hero-books { padding: 30px 0 20px; } .hero-books .hero-stage { height: 380px; } .hero-books .hero-glow { width: 320px; height: 320px; margin-left: -160px; } }
+/* Home banner: the books set inside a static banner (no animation) */
+.banner-section { padding: 36px 0 20px; }
+.banner { position: relative; display: flex; align-items: center; justify-content: center; gap: 36px; min-height: 360px; padding: 40px 24px; border-radius: 24px; overflow: hidden; border: 1px solid var(--line-2);
+  background: radial-gradient(ellipse at 50% 120%, rgba(212, 175, 106, 0.28), transparent 60%), linear-gradient(135deg, #14141f 0%, #0b0b12 60%, #17130b 140%); }
+.banner .cover { width: 190px; flex: none; box-shadow: 0 30px 50px -18px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.08); }
+@media (max-width: 720px) { .banner { min-height: 240px; gap: 18px; padding: 26px 16px; border-radius: 18px; } .banner .cover { width: 38%; max-width: 150px; } }
 
 .trust { border-block: 1px solid var(--line); background: rgba(255, 255, 255, 0.015); }
 .trust-inner { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 26px 0; }

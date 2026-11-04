@@ -22,11 +22,10 @@ export default function Home() {
 
   return (
     <>
-      <section className="hero hero-books">
+      <section className="banner-section">
         <div className="container">
-          <Link to="/books" className="hero-stage" aria-label="Browse the library">
-            <div className="hero-glow" />
-            {hero.map((b, i) => <BookCover key={b.id} book={b} className={`c${i + 1}`} />)}
+          <Link to="/books" className="banner" aria-label="Browse the library">
+            {hero.map((b) => <BookCover key={b.id} book={b} />)}
           </Link>
         </div>
       </section>
