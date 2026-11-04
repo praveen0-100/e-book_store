@@ -267,6 +267,7 @@ export async function loadSettings(force = false) {
   const rows = await db.prepare('SELECT key, value FROM settings').all();
   settingsCache = { ...DEFAULT_SETTINGS };
   for (const r of rows) settingsCache[r.key] = r.value;
+  if (!settingsCache.support_email) settingsCache.support_email = process.env.SUPPORT_EMAIL || ''; // deployment-level fallback when the admin field is empty
   settingsAt = Date.now();
   return settingsCache;
 }
