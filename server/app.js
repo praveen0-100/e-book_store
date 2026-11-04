@@ -189,7 +189,9 @@ app.post('/api/checkout/verify', checkoutLimiter, async (req, res) => {
 });
 
 /** Razorpay webhook: fulfils the order even if the customer closed the browser right after paying. */
-app.post('/api/webhooks/razorpay', async (req, res) => {
+// /api/webhooks/payments is an alias: some dashboards reject webhook URLs containing the provider's name
+app.get(['/api/webhooks/payments', '/api/webhooks/razorpay'], (req, res) => res.json({ ok: true }));
+app.post(['/api/webhooks/razorpay', '/api/webhooks/payments'], async (req, res) => {
   if (!verifyWebhookSignature(req.rawBody, req.get('x-razorpay-signature'))) return res.status(400).json({ error: 'Invalid signature' });
   const { event, payload } = req.body || {};
   const pay = payload?.payment?.entity;
