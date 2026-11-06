@@ -9,8 +9,7 @@ export const useAdmin = () => useContext(AdminCtx);
 
 const LINKS = [
   ['/admin', 'chart', 'Dashboard', true],
-  ['/admin/approvals', 'check-circle', 'Approvals', false, 'approvals'],
-  ['/admin/orders', 'orders', 'Orders'],
+  ['/admin/orders', 'orders', 'Orders', false, 'orders'],
   ['/admin/invoices', 'invoice', 'Invoices'],
   ['/admin/books', 'book', 'Books'],
   ['/admin/feedback', 'message', 'Feedback', false, 'feedback'],
@@ -29,7 +28,7 @@ export default function AdminLayout() {
   // Sidebar counters refresh every minute so new work shows up without reloading.
   useEffect(() => {
     if (!user) return undefined;
-    const load = () => api('/admin/overview').then((o) => setBadges({ approvals: o.attention.paymentApprovals + o.attention.invoiceApprovals, feedback: o.attention.reviewsToModerate + o.attention.messagesToAnswer })).catch(() => {});
+    const load = () => api('/admin/overview').then((o) => setBadges({ orders: o.attention.blockedPayments + o.attention.legacyUpi, feedback: o.attention.reviewsToModerate + o.attention.messagesToAnswer })).catch(() => {});
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
@@ -78,8 +77,9 @@ export function PageHead({ title, sub, children }) {
 }
 
 export function StatusBadge({ status, approval }) {
-  if (status === 'paid' && approval === 'pending') return <span className="badge gold">Awaiting approval</span>;
+  if (status === 'paid' && approval === 'pending') return <span className="badge gold">Manual UPI check</span>;
   if (approval === 'rejected') return <span className="badge red">Rejected</span>;
+  if (status === 'failed') return <span className="badge red">Blocked</span>;
   return <span className={`badge ${status === 'paid' ? 'green' : 'red'}`}>{status === 'paid' ? 'Paid' : status === 'pending' ? 'Pending' : 'Refunded'}</span>;
 }
 

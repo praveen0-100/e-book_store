@@ -20,14 +20,15 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   return data;
 }
 
-let currency = 'USD';
-export const setCurrency = (c) => { currency = c || 'USD'; };
+// The whole store (storefront, admin, invoices) is in Indian rupees.
+const currency = 'INR';
+export const setCurrency = () => {};
 export const money = (cents = 0) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(cents / 100);
 export const moneyShort = (cents = 0) => {
   const v = cents / 100;
-  if (Math.abs(v) >= 1000) return new Intl.NumberFormat('en-US', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(v);
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(v);
+  if (Math.abs(v) >= 1000) return new Intl.NumberFormat('en-IN', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(v);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(v);
 };
 export const fmtDate = (iso, opts = { month: 'short', day: 'numeric', year: 'numeric' }) =>
   new Date(iso).toLocaleDateString('en-US', opts);

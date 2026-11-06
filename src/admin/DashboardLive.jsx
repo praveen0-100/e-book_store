@@ -39,8 +39,8 @@ export function TodayPanel() {
     ['Refunds', money(t.refunds), t.refunds, y.refunds],
   ];
   const items = [
-    ['/admin/approvals', 'Payments awaiting approval', a.paymentApprovals],
-    ['/admin/approvals', 'Invoices to issue', a.invoiceApprovals],
+    ['/admin/orders?status=failed', 'Blocked / failed payments (7d)', a.blockedPayments],
+    ...(a.legacyUpi ? [['/admin/orders', 'Manual UPI orders to verify', a.legacyUpi]] : []),
     ['/admin/feedback', 'Reviews to moderate', a.reviewsToModerate],
     ['/admin/feedback', 'Messages to answer', a.messagesToAnswer],
     ['/admin/books', 'Books missing a file', a.booksWithoutFile],
@@ -65,7 +65,7 @@ export function TodayPanel() {
         <div className="attn">
           {items.map(([to, label, n]) => <Link key={label} to={to} className={n ? '' : 'zero'}><span>{label}</span><b>{n}</b></Link>)}
         </div>
-        {!o.requireApproval && <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Orders are approved automatically. <Link to="/admin/settings" style={{ textDecoration: 'underline' }}>Turn on manual approval</Link></p>}
+        <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>Payments are verified, invoiced and delivered automatically. You are emailed only when a payment fails or looks fake.</p>
       </div>
     </div>
   );

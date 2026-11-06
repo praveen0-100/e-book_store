@@ -41,20 +41,21 @@ export default function OrderPage() {
   }
   const refunded = order.status === 'refunded';
   const awaiting = order.status === 'paid' && order.approval_status === 'pending';
+  const blocked = order.status === 'failed';
 
   return (
     <div className="container" style={{ maxWidth: 820, paddingBottom: 80 }}>
       <div className="success-hero fade-in">
         <div className="tick" style={refunded ? { color: 'var(--red)', borderColor: 'rgba(255,122,138,.4)', background: 'rgba(255,122,138,.1)' } : undefined}><Icon name={refunded ? 'refresh' : 'check'} size={38} stroke={2.4} /></div>
         <span className="eyebrow">{order.number}</span>
-        <h1 style={{ fontSize: 46, margin: '10px 0' }}>{refunded ? (order.approval_status === 'rejected' ? 'This order could not be completed' : 'This order was refunded') : awaiting ? 'Payment received' : params.get('new') ? 'Thank you, ' + order.name.split(' ')[0] + '!' : 'Your order'}</h1>
-        <p className="muted">{refunded ? (order.approval_status === 'rejected' ? `Your payment was refunded${order.reject_reason ? `: ${order.reject_reason}` : '.'}` : 'Downloads are no longer available for this order.') : <>A confirmation has been sent to <b style={{ color: 'var(--text)' }}>{order.email}</b>. Bookmark this page to download your books any time.</>}</p>
+        <h1 style={{ fontSize: 46, margin: '10px 0' }}>{blocked ? 'Payment not completed' : refunded ? (order.approval_status === 'rejected' ? 'This order could not be completed' : 'This order was refunded') : awaiting ? 'Payment received' : params.get('new') ? 'Thank you, ' + order.name.split(' ')[0] + '!' : 'Your order'}</h1>
+        <p className="muted">{blocked ? 'We could not confirm this payment, so no e-books were released. If money was deducted it will be returned automatically within 5–7 working days. We have emailed you the details.' : refunded ? (order.approval_status === 'rejected' ? `Your payment was refunded${order.reject_reason ? `: ${order.reject_reason}` : '.'}` : 'Downloads are no longer available for this order.') : <>A confirmation has been sent to <b style={{ color: 'var(--text)' }}>{order.email}</b>. Bookmark this page to download your books any time.</>}</p>
       </div>
 
       {awaiting && (
         <div className="dl-pending" style={{ marginBottom: 20 }}>
           <Icon name="clock" size={22} />
-          <div><b>Your payment was received and is being verified.</b><p className="muted" style={{ fontSize: 14, marginTop: 4 }}>Downloads unlock as soon as we approve your order — usually within a few hours. We will email {order.email}; you can also bookmark this page.</p></div>
+          <div><b>Your payment was received and is being verified.</b><p className="muted" style={{ fontSize: 14, marginTop: 4 }}>Downloads unlock as soon as verification finishes. We will email {order.email}; you can also bookmark this page.</p></div>
         </div>
       )}
       <div className="card card-pad" style={{ marginBottom: 20 }}>
@@ -63,9 +64,10 @@ export default function OrderPage() {
           <div className="dl-row" key={i.id}>
             <BookCover book={{ title: i.title, author: i.author, category: '', color_a: '#1c1c2b', color_b: '#d4af6a' }} />
             <div><b className="serif" style={{ fontSize: 18 }}>{i.title}</b><div className="muted" style={{ fontSize: 13 }}>{i.author}</div></div>
-            {refunded
+            {blocked ? <span className="badge red">Not released</span>
+              : refunded
               ? <span className="badge red">Refunded</span>
-              : awaiting ? <span className="badge gold">Awaiting approval</span>
+              : awaiting ? <span className="badge gold">Verifying</span>
               : <a className="btn btn-gold btn-sm" href={`/api/download/${token}/${i.id}`}><Icon name="download" size={16} /> Download</a>}
           </div>
         ))}

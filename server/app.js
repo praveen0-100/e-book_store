@@ -10,7 +10,7 @@ import { COOKIE, makeSession, requireAdmin, verifyPassword, readSession, attachU
 import { googleEnabled, googleClientId } from './google.js';
 import { mountAuth } from './routes-auth.js';
 import { paymentsEnabled, keyId, createOrder, verifyCheckoutSignature, verifyWebhookSignature, fetchPayment } from './payments.js';
-import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder, placeUpiOrder } from './orders.js';
+import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder, placeUpiOrder, flagOrder, reportFailedAttempt } from './orders.js';
 import { mountPublic, mountAdmin, dayStartISO, tzMinutes, localDateOf, localDowOf } from './routes-extra.js';
 import { securityHeaders, rateLimit, requestLog } from './security.js';
 import { blobMode, saveCover, removeFile, sendCover, sendEbook, checkUploadedEbook, EBOOK_EXT, COVER_EXT } from './storage.js';
@@ -73,7 +73,7 @@ const httpErr = (message, status = 400) => Object.assign(new Error(message), { s
 /* ---------------------------------------------------------------- public */
 app.get('/api/config', (req, res) => {
   const s = getSettings();
-  res.json({ store_name: s.store_name, currency: s.currency, tax_rate: Number(s.tax_rate), support_email: s.support_email, payments_enabled: paymentsEnabled(), upi_id: process.env.UPI_ID || null, upi_name: process.env.UPI_NAME || getSettings().store_name, google_client_id: googleEnabled() ? googleClientId() : null, require_login: process.env.REQUIRE_LOGIN_TO_BUY === 'true' });
+  res.json({ store_name: s.store_name, currency: s.currency, tax_rate: Number(s.tax_rate), support_email: s.support_email, payments_enabled: paymentsEnabled(), upi_id: manualUpiEnabled() ? process.env.UPI_ID : null, upi_name: process.env.UPI_NAME || getSettings().store_name, google_client_id: googleEnabled() ? googleClientId() : null, require_login: process.env.REQUIRE_LOGIN_TO_BUY === 'true' });
 });
 
 app.get('/api/books', async (req, res) => {
@@ -137,7 +137,7 @@ app.post('/api/cart/quote', async (req, res) => {
 });
 
 /** Step 1: validate the cart, create a Razorpay order and a pending local order. No card data touches this server. */
-const checkoutLimiter = rateLimit({ name: 'checkout', windowMs: 10 * 60 * 1000, max: 20, message: 'Too many checkout attempts. Please wait a few minutes and try again.' });
+const checkoutLimiter = rateLimit({ name: 'checkout', windowMs: 10 * 60 * 1000, max: Number(process.env.CHECKOUT_RATE_MAX) || 20, message: 'Too many checkout attempts. Please wait a few minutes and try again.' });
 app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   let { ids = [], coupon, name, email } = req.body || {};
   if (process.env.REQUIRE_LOGIN_TO_BUY === 'true' && !req.user) return res.status(401).json({ error: 'Please log in or sign up to continue.' });
@@ -148,19 +148,22 @@ app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   const p = await priceCart(ids, coupon); // prices always come from the database, never from the browser
   const settings = getSettings();
   const token = crypto.randomBytes(20).toString('hex');
-  const rzp = await createOrder({ amount: p.total, currency: settings.currency, receipt: token.slice(0, 32), notes: { email: email.trim().toLowerCase() } });
+  const rzp = await createOrder({ amount: p.total, currency: 'INR', receipt: token.slice(0, 32), notes: { email: email.trim().toLowerCase() } });
   const orderId = await tx(async () => {
     const id = await db.insert(`INSERT INTO orders (token,email,name,status,subtotal_cents,discount_cents,tax_cents,total_cents,tax_rate,coupon,payment_method,provider_order_id,created_at,ip,customer_id)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, token, email.trim().toLowerCase(), name.trim(), 'pending', p.subtotal, p.discount, p.tax, p.total, p.taxRate, p.coupon?.code || null, 'razorpay', rzp.id, new Date().toISOString(), req.ip || null, req.user?.id || null);
     for (const bk of p.books) await db.prepare('INSERT INTO order_items (order_id,book_id,title,author,price_cents) VALUES (?,?,?,?,?)').run(id, bk.id, bk.title, bk.author, bk.price_cents);
     return id;
   });
-  res.json({ token, number: orderNumber(orderId), key_id: keyId(), razorpay_order_id: rzp.id, amount: p.total, currency: settings.currency, store_name: settings.store_name });
+  res.json({ token, number: orderNumber(orderId), key_id: keyId(), razorpay_order_id: rzp.id, amount: p.total, currency: 'INR', store_name: settings.store_name });
 });
+
+/** Manual UPI QR cannot be verified automatically (the UTR is typed by the customer), so it is OFF unless MANUAL_UPI_ENABLED=true; those orders then need hand approval from the order page. */
+const manualUpiEnabled = () => process.env.MANUAL_UPI_ENABLED === 'true' && Boolean(process.env.UPI_ID);
 
 /** Manual UPI QR payment: customer scanned our QR and sends the UPI reference; the owner approves it in the admin panel. */
 app.post('/api/checkout/upi', checkoutLimiter, async (req, res) => {
-  if (!process.env.UPI_ID) return res.status(503).json({ error: 'UPI QR payment is not available right now.' });
+  if (!manualUpiEnabled()) return res.status(503).json({ error: 'UPI QR payment is not available right now.' });
   let { ids = [], coupon, name, email, utr } = req.body || {};
   if (process.env.REQUIRE_LOGIN_TO_BUY === 'true' && !req.user) return res.status(401).json({ error: 'Please log in or sign up to continue.' });
   if (req.user) { name = req.user.name; email = req.user.email; }
@@ -179,12 +182,19 @@ app.post('/api/checkout/verify', checkoutLimiter, async (req, res) => {
   const order = await db.prepare('SELECT * FROM orders WHERE token = ? AND provider_order_id = ?').get(String(token || ''), String(rOrder || ''));
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   if (order.status !== 'pending') return res.json({ token: order.token }); // already fulfilled (e.g. by the webhook)
-  if (!verifyCheckoutSignature({ orderId: rOrder, paymentId: rPay, signature: rSig })) return res.status(400).json({ error: 'Payment verification failed. If money was deducted it will be refunded automatically.' });
-  const pay = await fetchPayment(rPay, { amount: order.total_cents, currency: getSettings().currency });
-  if (pay.order_id !== order.provider_order_id || pay.amount !== order.total_cents || pay.status !== 'captured') {
-    return res.status(402).json({ error: 'The payment was not completed. You have not been charged.' });
+  if (!verifyCheckoutSignature({ orderId: rOrder, paymentId: rPay, signature: rSig })) {
+    await reportFailedAttempt(order, { id: String(rPay || 'no-payment-id').slice(0, 40), error_description: 'Invalid payment signature (possible forged payment confirmation)' }).catch((e) => console.error(e)); // order stays locked and open: a real customer can still pay
+    return res.status(400).json({ error: 'Payment verification failed. Your e-books were not released. If money was deducted it will be returned automatically.' });
   }
-  await fulfil(order, pay);
+  const pay = await fetchPayment(rPay, { amount: order.total_cents, currency: 'INR' });
+  if (pay.status === 'failed') {
+    await flagOrder(order, pay.error_description || 'Payment failed at the bank', 'Checkout verification').catch((e) => console.error(e));
+    return res.status(402).json({ error: 'The payment failed. You have not been charged and no e-book was released.' });
+  }
+  if (pay.status !== 'captured') return res.status(402).json({ error: 'The payment was not completed. You have not been charged.' });
+  const done = await fulfil(order, pay);
+  const after = await db.prepare('SELECT status FROM orders WHERE id = ?').get(order.id);
+  if (!done && after.status !== 'paid') return res.status(402).json({ error: 'We could not verify this payment, so your e-books were not released. If money was deducted it will be refunded automatically. We have emailed you the details.' });
   res.json({ token: order.token });
 });
 
@@ -197,7 +207,11 @@ app.post(['/api/webhooks/razorpay', '/api/webhooks/payments'], async (req, res) 
   const pay = payload?.payment?.entity;
   if ((event === 'payment.captured' || event === 'order.paid') && pay?.order_id) {
     const order = await db.prepare("SELECT * FROM orders WHERE provider_order_id = ? AND status = 'pending'").get(pay.order_id);
-    if (order && pay.status === 'captured' && pay.amount === order.total_cents) await fulfil(order, pay);
+    if (order && pay.status === 'captured') await fulfil(order, pay); // fulfil() re-checks amount, currency and ownership and blocks + alerts on any mismatch
+  }
+  if (event === 'payment.failed' && pay?.order_id) {
+    const order = await db.prepare("SELECT * FROM orders WHERE provider_order_id = ? AND status = 'pending'").get(pay.order_id);
+    if (order) await reportFailedAttempt(order, pay);
   }
   res.json({ ok: true });
 });
@@ -213,7 +227,7 @@ app.get('/api/download/:token/:itemId', async (req, res) => {
   const row = await db.prepare(`SELECT oi.*, o.status, o.approval_status, o.email, o.id order_id FROM order_items oi JOIN orders o ON o.id = oi.order_id
     WHERE o.token = ? AND oi.id = ?`).get(req.params.token, Number(req.params.itemId));
   if (!row) return res.status(404).send('Download not found');
-  if (!canDownload(row)) return res.status(403).send(row.status === 'paid' && row.approval_status === 'pending' ? 'Your payment is awaiting approval. You will be emailed as soon as your downloads are ready.' : 'This order is no longer eligible for download.');
+  if (!canDownload(row)) return res.status(403).send(row.status === 'paid' && row.approval_status === 'pending' ? 'Your payment is being verified. You will be emailed as soon as your downloads are ready.' : 'This order is not eligible for download because its payment was not completed or could not be verified.');
   if (row.downloads >= 10) return res.status(429).send('Download limit reached. Please contact support.');
   const book = row.book_id ? await db.prepare('SELECT * FROM books WHERE id = ?').get(row.book_id) : null;
   const safe = slugify(row.title) || 'ebook';
@@ -445,7 +459,7 @@ admin.get('/settings', (req, res) => res.json(publicSettings()));
 admin.put('/settings', async (req, res) => {
   const tax = Number(req.body.tax_rate);
   if (!(tax >= 0 && tax <= 50)) return res.status(400).json({ error: 'Tax rate must be between 0 and 50.' });
-  if (req.body.currency !== undefined) { req.body.currency = String(req.body.currency).toUpperCase(); if (!/^[A-Z]{3}$/.test(req.body.currency)) return res.status(400).json({ error: 'Currency must be a 3-letter ISO code, e.g. INR.' }); }
+  req.body.currency = 'INR'; req.body.require_approval = 'false';
   const off = Number(req.body.tz_offset_minutes ?? getSettings().tz_offset_minutes);
   if (!(off >= -720 && off <= 840)) return res.status(400).json({ error: 'Invalid timezone offset.' });
   await tx(async () => {

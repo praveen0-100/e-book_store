@@ -52,7 +52,7 @@ export default function Account() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
               <div><b>{o.number}</b> <span className="muted" style={{ fontSize: 13 }}>· {fmtDate(o.created_at)}</span></div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                {o.status === 'refunded' ? <span className="badge red">Refunded</span> : o.can_download ? <span className="badge green">Paid</span> : <span className="badge gold">Awaiting approval</span>}
+                {o.status === 'refunded' ? <span className="badge red">Refunded</span> : o.status === 'failed' ? <span className="badge red">Not completed</span> : o.can_download ? <span className="badge green">Paid</span> : <span className="badge gold">Verifying</span>}
                 <b>{money(o.total_cents)}</b>
               </div>
             </div>

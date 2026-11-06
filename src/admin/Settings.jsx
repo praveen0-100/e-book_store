@@ -42,10 +42,7 @@ export default function Settings() {
         <div className="field"><label>Invoice footer note</label><textarea className="input" style={{ minHeight: 80 }} value={s.invoice_notes} onChange={set('invoice_notes')} /></div>
 
         <h3 style={{ fontSize: 17, marginTop: 8 }}>Operations</h3>
-        <label className="switch">
-          <input type="checkbox" checked={s.require_approval === 'true'} onChange={(e) => setS({ ...s, require_approval: String(e.target.checked) })} />
-          <span><b>Require manual approval</b><small>Customers pay normally, but downloads and the tax invoice are held until you approve them in Approvals. Rejecting refunds the customer automatically. Leave off for instant delivery.</small></span>
-        </label>
+        <p className="muted" style={{ fontSize: 13 }}>Payments are verified automatically; the invoice is issued and the e-books are delivered with no approval step. Failed or suspicious payments are blocked and alerted by email to the support address (or ALERT_EMAIL).</p>
         <div className="grid-2">
           <div className="field"><label>Reporting timezone</label>
             <select className="input" value={s.tz_offset_minutes} onChange={set('tz_offset_minutes')}>
@@ -53,7 +50,7 @@ export default function Settings() {
               {!ZONES.some(([v]) => v === s.tz_offset_minutes) && <option value={s.tz_offset_minutes}>UTC offset {s.tz_offset_minutes} min</option>}
             </select>
           </div>
-          <div className="field"><label>Currency (ISO code)</label><input className="input" value={s.currency} onChange={set('currency')} maxLength={3} style={{ textTransform: 'uppercase' }} /></div>
+          <div className="field"><label>Currency</label><input className="input" value="INR (₹ Indian rupee)" readOnly disabled /></div>
         </div>
         <p className="muted" style={{ fontSize: 12.5, marginTop: -8 }}>The timezone decides where “today” starts in the dashboard and daily report. Currency must be supported by your Razorpay account.</p>
         <div><button className="btn btn-gold" disabled={busy}>{busy ? <span className="spinner" /> : 'Save settings'}</button></div>

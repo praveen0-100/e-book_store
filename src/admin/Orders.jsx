@@ -30,10 +30,7 @@ export default function Orders({ invoices = false }) {
       <div className="filters">
         <input className="input" placeholder="Search invoice #, customer, email or payment ref…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search orders" />
         <select className="input" style={{ width: 'auto' }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
-          <option value="">All statuses</option><option value="paid">Paid</option><option value="refunded">Refunded</option>
-        </select>
-        <select className="input" style={{ width: 'auto' }} value={approval} onChange={(e) => setApproval(e.target.value)} aria-label="Filter by approval">
-          <option value="">Any approval state</option><option value="pending">Needs approval</option>
+          <option value="">All statuses</option><option value="paid">Paid</option><option value="failed">Blocked / failed</option><option value="refunded">Refunded</option>
         </select>
       </div>
       {err && <div className="error-box">{err}</div>}

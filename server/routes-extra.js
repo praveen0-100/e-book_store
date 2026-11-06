@@ -115,14 +115,14 @@ export function mountAdmin(admin) {
     res.json({
       today: (await range(t0, t1)), yesterday: (await range(y0, t0)), hours,
       attention: {
-        paymentApprovals: (await c("SELECT COUNT(*) c FROM orders WHERE status='paid' AND approval_status='pending'")),
-        invoiceApprovals: (await c("SELECT COUNT(*) c FROM orders WHERE status='paid' AND approval_status='approved' AND invoice_status='pending'")),
+        blockedPayments: (await c(`SELECT COUNT(*) c FROM orders WHERE status='failed' AND created_at >= '${dayStartISO(7)}'`)),
+        legacyUpi: (await c("SELECT COUNT(*) c FROM orders WHERE status='paid' AND approval_status='pending'")),
         reviewsToModerate: (await c("SELECT COUNT(*) c FROM feedback WHERE type='review' AND status='pending'")),
         messagesToAnswer: (await c("SELECT COUNT(*) c FROM feedback WHERE type='message' AND status='new'")),
         booksWithoutFile: (await c('SELECT COUNT(*) c FROM books WHERE ebook_file IS NULL')),
         failedEmails: (await c(`SELECT COUNT(*) c FROM email_log WHERE status='failed' AND at >= '${dayStartISO(1)}'`)),
       },
-      requireApproval: getSettings().require_approval === 'true', tz: tzMin(),
+      tz: tzMin(),
     });
   });
 
@@ -157,29 +157,11 @@ export function mountAdmin(admin) {
     res.json(ev.slice(0, 25));
   });
 
-  /* ---------------- approvals (payments + invoices) ---------------- */
-  const queueSql = {
-    payments: "status='paid' AND approval_status='pending'",
-    invoices: "status='paid' AND approval_status='approved' AND invoice_status='pending'",
-  };
-  admin.get('/approvals', async (req, res) => {
-    const tab = queueSql[req.query.tab] ? req.query.tab : 'payments';
-    const rows = (await db.prepare(`SELECT o.*, (SELECT COUNT(*) FROM order_items WHERE order_id=o.id) item_count FROM orders o WHERE ${queueSql[tab]} ORDER BY created_at ASC LIMIT 200`).all());
-    const counts = Object.fromEntries(await Promise.all(Object.entries(queueSql).map(async ([k, w]) => [k, (await db.prepare(`SELECT COUNT(*) c FROM orders WHERE ${w}`).get()).c])));
-    res.json({ tab, counts, requireApproval: getSettings().require_approval === 'true', rows: await Promise.all(rows.map(async (o) => ({ ...(await serializeOrder(o)), item_count: o.item_count }))) });
-  });
+  /* Payments are verified and delivered automatically. These single-order actions remain only for legacy manual-UPI orders. */
   admin.post('/orders/:id/approve-payment', async (req, res) => res.json((await serializeOrder((await approvePayment(Number(req.params.id), who(req)))))));
   admin.post('/orders/:id/reject-payment', wrap(async (req, res) => res.json((await serializeOrder(await rejectPayment(Number(req.params.id), who(req), clean(req.body?.reason, 300)))))));
   admin.post('/orders/:id/issue-invoice', async (req, res) => res.json((await serializeOrder((await approveInvoice(Number(req.params.id), who(req)))))));
   admin.post('/orders/:id/resend', wrap(async (req, res) => { await resendOrderEmail(Number(req.params.id), who(req)); res.json({ ok: true, emailEnabled: emailEnabled() }); }));
-  admin.post('/approvals/bulk', async (req, res) => {
-    const { action, ids = [] } = req.body || {};
-    const fn = { 'approve-payment': approvePayment, 'issue-invoice': approveInvoice }[action];
-    if (!fn) return res.status(400).json({ error: 'Unknown action' });
-    let done = 0; const failed = [];
-    for (const id of ids.slice(0, 200)) { try { await fn(Number(id), who(req)); done++; } catch (e) { failed.push({ id, error: e.message }); } }
-    res.json({ done, failed });
-  });
   admin.get('/orders/:id/invoice.pdf', wrap(async (req, res) => {
     const o = (await getOrder(req.params.id));
     if (!o || o.status === 'pending') return res.status(404).send('Not found');

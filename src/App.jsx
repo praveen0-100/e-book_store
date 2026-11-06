@@ -18,7 +18,6 @@ import AdminOrderDetail from './admin/OrderDetail.jsx';
 import Customers from './admin/Customers.jsx';
 import Coupons from './admin/Coupons.jsx';
 import Settings from './admin/Settings.jsx';
-import Approvals from './admin/Approvals.jsx';
 import Feedback from './admin/Feedback.jsx';
 import CustomerDetail from './admin/CustomerDetail.jsx';
 import System from './admin/System.jsx';
@@ -67,7 +66,6 @@ export default function App() {
           <Route path="invoices" element={<AdminOrders invoices />} />
           <Route path="customers" element={<Customers />} />
           <Route path="customers/:email" element={<CustomerDetail />} />
-          <Route path="approvals" element={<Approvals />} />
           <Route path="feedback" element={<Feedback />} />
           <Route path="system" element={<System />} />
           <Route path="coupons" element={<Coupons />} />

@@ -53,7 +53,7 @@ async function buy({ email = 'buyer@example.com', name = 'Test Buyer', coupon, i
   const c = await call('/api/checkout', { method: 'POST', body: { ids: ids || [book.id], name, email, coupon } });
   assert.equal(c.status, 200, JSON.stringify(c.data));
   const paymentId = 'pay_' + crypto.randomBytes(6).toString('hex');
-  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, status: 'captured', method: 'card', card: { network: 'Visa', last4: '4242' } });
+  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, currency: 'INR', status: 'captured', method: 'card', card: { network: 'Visa', last4: '4242' } });
   const sig = crypto.createHmac('sha256', KEY_SECRET).update(`${c.data.razorpay_order_id}|${paymentId}`).digest('hex');
   return { ...c.data, paymentId, sig };
 }
@@ -77,7 +77,7 @@ before(async () => {
 
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: process.cwd(), stdio: 'ignore',
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_PASSWORD: 'correct-horse-battery', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: KEY_SECRET, RAZORPAY_WEBHOOK_SECRET: WH_SECRET, RAZORPAY_API_URL: `http://localhost:${RZP_PORT}/v1`, AUTH_DEBUG_TOKENS: 'true', GOOGLE_CLIENT_ID: GOOGLE_CLIENT, GOOGLE_JWKS_URL: `http://localhost:${RZP_PORT}/certs`, SMTP_HOST: '', SMTP_FROM: '' },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, ADMIN_PASSWORD: 'correct-horse-battery', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: KEY_SECRET, RAZORPAY_WEBHOOK_SECRET: WH_SECRET, RAZORPAY_API_URL: `http://localhost:${RZP_PORT}/v1`, AUTH_DEBUG_TOKENS: 'true', CHECKOUT_RATE_MAX: '500', GOOGLE_CLIENT_ID: GOOGLE_CLIENT, GOOGLE_JWKS_URL: `http://localhost:${RZP_PORT}/certs`, SMTP_HOST: '', SMTP_FROM: '' },
   });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(base + '/api/health')).ok) break; } catch { /* wait */ } await new Promise((r) => setTimeout(r, 150)); }
 
@@ -137,7 +137,39 @@ test('server recomputes the price and rejects amount mismatch', async () => {
   const o = await buy({ email: 'tamper@example.com' });
   rzpState.payments.get(o.paymentId).amount = 100; // customer somehow paid less
   assert.equal((await verify(o)).status, 402);
-  assert.equal((await call(`/api/orders/${o.token}`)).data.status, 'pending');
+  assert.equal((await call(`/api/orders/${o.token}`)).data.status, 'failed', 'underpaid order is blocked');
+  assert.equal((await call(`/api/download/${o.token}/${(await call(`/api/orders/${o.token}`)).data.items[0].id}`, { raw: true })).status, 403, 'no e-book for a tampered payment');
+  assert.ok(rzpState.refunds.some((r) => r.payment === o.paymentId), 'captured money is refunded automatically');
+  const acts = await auditActions();
+  assert.ok(acts.includes('payment.blocked'), 'admin alert recorded');
+});
+
+test('failed payment attempt and forged signature alert but never release the book', async () => {
+  const o = await buy({ email: 'failed@example.com' });
+  const entity = { ...rzpState.payments.get(o.paymentId), status: 'failed', error_description: 'Card declined' };
+  const body = JSON.stringify({ event: 'payment.failed', payload: { payment: { entity } } });
+  const sig = crypto.createHmac('sha256', WH_SECRET).update(body).digest('hex');
+  const hook = () => fetch(base + '/api/webhooks/razorpay', { method: 'POST', headers: { ...json(), 'x-razorpay-signature': sig }, body });
+  assert.equal((await hook()).status, 200);
+  assert.equal((await hook()).status, 200, 'duplicate webhook is harmless');
+  const rows = (await call('/api/admin/audit?limit=200', { admin: true })).data.rows.filter((r) => r.action === 'payment.failed' && r.detail.includes(o.paymentId));
+  assert.equal(rows.length, 1, 'alert sent once per failed payment');
+  assert.equal((await verify(o, { razorpay_signature: 'forged' })).status, 400);
+  const order = (await call(`/api/orders/${o.token}`)).data;
+  assert.equal(order.status, 'pending', 'order stays open so a real customer can still pay');
+  assert.equal((await call(`/api/download/${o.token}/${order.items[0].id}`, { raw: true })).status, 403);
+  assert.equal((await verify(o)).status, 200, 'genuine payment afterwards succeeds');
+});
+
+test('a payment id cannot be reused to unlock a second order', async () => {
+  const a = await buy({ email: 'reuse-a@example.com' });
+  assert.equal((await verify(a)).status, 200);
+  const b = await buy({ email: 'reuse-b@example.com' });
+  const stolen = { ...rzpState.payments.get(a.paymentId), order_id: b.razorpay_order_id };
+  rzpState.payments.set(a.paymentId, stolen); // gateway data now claims the same payment belongs to order b
+  const sig = crypto.createHmac('sha256', KEY_SECRET).update(`${b.razorpay_order_id}|${a.paymentId}`).digest('hex');
+  assert.equal((await verify(b, { razorpay_payment_id: a.paymentId, razorpay_signature: sig })).status, 402);
+  assert.equal((await call(`/api/orders/${b.token}`)).data.status, 'failed');
 });
 
 test('webhook completes an order the browser never confirmed', async () => {
@@ -151,27 +183,17 @@ test('webhook completes an order the browser never confirmed', async () => {
   assert.equal((await call(`/api/orders/${o.token}`)).data.status, 'paid');
 });
 
-test('manual approval mode: hold -> approve payment -> issue invoice', async () => {
+test('approval setting is ignored: every verified payment is delivered and invoiced automatically', async () => {
   await setSetting('require_approval', 'true');
-  const o = await buy({ email: 'manual@example.com', name: 'Manual Buyer' });
+  const o = await buy({ email: 'manual@example.com', name: 'Auto Buyer' });
   assert.equal((await verify(o)).status, 200);
-  let order = (await call(`/api/orders/${o.token}`)).data;
-  assert.equal(order.approval_status, 'pending'); assert.equal(order.invoice_status, 'pending');
-  assert.equal((await call(`/api/download/${o.token}/${order.items[0].id}`, { raw: true })).status, 403, 'download held');
-  assert.equal((await call(`/api/orders/${o.token}/invoice.pdf`, { raw: true })).status, 404, 'invoice held');
-
-  const q = (await call('/api/admin/approvals?tab=payments', { admin: true })).data;
-  assert.ok(q.rows.some((r) => r.token === o.token));
-  const id = q.rows.find((r) => r.token === o.token).id;
-  assert.equal((await call(`/api/admin/orders/${id}/issue-invoice`, { method: 'POST', admin: true })).status, 400, 'invoice needs payment approval first');
-  assert.equal((await call(`/api/admin/orders/${id}/approve-payment`, { method: 'POST', admin: true })).status, 200);
-  assert.equal((await call(`/api/download/${o.token}/${order.items[0].id}`, { raw: true })).status, 200, 'download released');
-  const q2 = (await call('/api/admin/approvals?tab=invoices', { admin: true })).data;
-  assert.ok(q2.rows.some((r) => r.token === o.token));
-  const inv = await call(`/api/admin/orders/${id}/issue-invoice`, { method: 'POST', admin: true });
-  assert.equal(inv.status, 200); assert.match(inv.data.invoice_no, /^INV-\d{4}-0000\d$/);
+  const order = (await call(`/api/orders/${o.token}`)).data;
+  assert.equal(order.status, 'paid'); assert.equal(order.approval_status, 'approved'); assert.equal(order.invoice_status, 'issued');
+  assert.equal(order.approved_by, 'auto');
+  assert.equal((await call(`/api/download/${o.token}/${order.items[0].id}`, { raw: true })).status, 200);
   assert.equal((await call(`/api/orders/${o.token}/invoice.pdf`, { raw: true })).status, 200);
-  assert.ok((await auditActions()).includes('payment.approved'));
+  assert.equal((await call('/api/admin/approvals', { admin: true })).status, 404, 'approvals queue no longer exists');
+  assert.equal((await call('/api/config')).data.upi_id, null, 'unverifiable manual UPI QR is off by default');
 });
 
 test('rejecting a payment refunds it through Razorpay and blocks downloads', async () => {
@@ -306,7 +328,7 @@ test('Google sign-in: token verification, session, account orders, identity bind
   const row = (await call(`/api/orders/${c.data.token}`)).data;
   assert.equal(row.email, 'googler@example.com'); assert.equal(row.name, 'Gita Googler');
   const paymentId = 'pay_g1';
-  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, status: 'captured', method: 'upi' });
+  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, currency: 'INR', status: 'captured', method: 'upi' });
   const sig = crypto.createHmac('sha256', KEY_SECRET).update(`${c.data.razorpay_order_id}|${paymentId}`).digest('hex');
   assert.equal((await call('/api/checkout/verify', { method: 'POST', body: { token: c.data.token, razorpay_order_id: c.data.razorpay_order_id, razorpay_payment_id: paymentId, razorpay_signature: sig } })).status, 200);
   const mine = (await call('/api/account/orders', { headers: { cookie: uc } })).data;
@@ -374,7 +396,7 @@ test('orders placed while logged in always belong to that account', async () => 
   const c = await call('/api/checkout', { method: 'POST', headers: { cookie: login.cookie }, body: { ids: [book.id], name: 'Spoof', email: 'spoof@example.com' } });
   assert.equal(c.status, 200);
   const paymentId = 'pay_acct1';
-  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, status: 'captured', method: 'card', card: { network: 'Visa', last4: '1111' } });
+  rzpState.payments.set(paymentId, { id: paymentId, order_id: c.data.razorpay_order_id, amount: c.data.amount, currency: 'INR', status: 'captured', method: 'card', card: { network: 'Visa', last4: '1111' } });
   const sig = crypto.createHmac('sha256', KEY_SECRET).update(`${c.data.razorpay_order_id}|${paymentId}`).digest('hex');
   assert.equal((await authPost('/api/checkout/verify', { token: c.data.token, razorpay_order_id: c.data.razorpay_order_id, razorpay_payment_id: paymentId, razorpay_signature: sig })).status, 200);
   const order = (await call(`/api/orders/${c.data.token}`)).data;

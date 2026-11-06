@@ -148,7 +148,7 @@ export default function Checkout() {
                 </div>
                 <p className="muted" style={{ fontSize: 14 }}>2. After paying, enter the <b style={{ color: 'var(--text)' }}>12-digit UPI reference (UTR)</b> from your payment receipt.</p>
                 <div className="field"><label htmlFor="utr">UPI reference number (UTR)</label><input id="utr" className="input" inputMode="numeric" maxLength={14} value={utr} onChange={(e) => setUtr(e.target.value.replace(/[^\d ]/g, ''))} placeholder="123456789012" /></div>
-                <div className="warn-box">We verify each UPI payment by hand — usually within a few hours. Your download and invoice are emailed as soon as it is approved.</div>
+                <div className="warn-box">This UPI payment is verified by hand — usually within a few hours. Your download and invoice are emailed as soon as it is confirmed.</div>
               </div>
             )}
             {!upi && config.payments_enabled === false && <div className="error-box" role="alert">Online payments are not available right now. Please contact the store owner.</div>}

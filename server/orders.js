@@ -27,7 +27,7 @@ export async function invoicePdf(o) {
 async function mailReceived(o) {
   await sendMail({
     to: o.email, kind: 'payment-received', subject: `Payment received · ${orderNumber(o.id)}`,
-    html: layout('We received your payment', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>Thank you for your purchase. Your payment of <b>${esc((o.total_cents / 100).toFixed(2))} ${esc(getSettings().currency)}</b> was received and is being reviewed. We will email you as soon as your downloads and invoice are ready.</p>`, { label: 'View order', url: orderUrl(o) }),
+    html: layout('We received your payment', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>Thank you for your purchase. Your payment of <b>₹${esc((o.total_cents / 100).toFixed(2))}</b> was received and is being verified. We will email you as soon as your downloads and invoice are ready.</p>`, { label: 'View order', url: orderUrl(o) }),
   });
 }
 async function mailDelivered(o, withInvoice) {
@@ -53,7 +53,7 @@ async function mailRejected(o, reason) {
 async function mailRefunded(o) {
   await sendMail({
     to: o.email, kind: 'refund', subject: `Refund issued · ${orderNumber(o.id)}`,
-    html: layout('Your refund has been issued', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>We have refunded <b>${esc((o.total_cents / 100).toFixed(2))} ${esc(getSettings().currency)}</b> for order ${esc(orderNumber(o.id))}. It should reach your account within 5–7 working days.</p>`),
+    html: layout('Your refund has been issued', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>We have refunded <b>₹${esc((o.total_cents / 100).toFixed(2))}</b> for order ${esc(orderNumber(o.id))}. It should reach your account within 5–7 working days.</p>`),
   });
 }
 
@@ -66,28 +66,98 @@ async function issueInvoiceTx(id, actor) {
   return true;
 }
 
+/* ------------------------------------------------- automatic verification */
+/** Who gets security alerts: ALERT_EMAIL, the store support email, and the SMTP account (deduplicated). */
+export function alertRecipients() {
+  const raw = [process.env.ALERT_EMAIL, getSettings().support_email, process.env.SMTP_USER].flatMap((v) => String(v || '').split(/[,;]/));
+  return [...new Set(raw.map((v) => v.trim().toLowerCase()).filter((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)))];
+}
+
 /**
- * Called when Razorpay confirms the payment. Idempotent (browser verify + webhook can both arrive).
- * Auto mode: approve + issue invoice + deliver immediately. Manual mode: hold for admin approval.
+ * Independent checks on a payment before anything is delivered. Returns a list of problems (empty = genuine).
+ * Everything is compared against our own database and the payment as re-fetched from Razorpay, never browser input.
+ */
+export async function assessPayment(order, payment) {
+  const issues = [];
+  if (!payment || payment.status !== 'captured') issues.push(`Payment status is "${payment?.status || 'unknown'}", not captured`);
+  if (payment?.order_id !== order.provider_order_id) issues.push('Payment belongs to a different gateway order');
+  if (payment?.amount !== order.total_cents) issues.push(`Amount mismatch: paid ${((payment?.amount || 0) / 100).toFixed(2)}, expected ${(order.total_cents / 100).toFixed(2)}`);
+  if (String(payment?.currency || '').toUpperCase() !== 'INR') issues.push(`Unexpected currency ${payment?.currency}`);
+  if (payment?.id && (await db.prepare('SELECT 1 FROM orders WHERE payment_ref = ? AND id != ?').get(payment.id, order.id))) issues.push('This payment ID was already used on another order');
+  const items = await db.prepare('SELECT price_cents FROM order_items WHERE order_id = ?').all(order.id);
+  const sum = items.reduce((a, i) => a + i.price_cents, 0);
+  if (!items.length || sum !== order.subtotal_cents || order.subtotal_cents - order.discount_cents + order.tax_cents !== order.total_cents) issues.push('Order totals are inconsistent with the items purchased');
+  return issues;
+}
+
+async function mailFailureToCustomer(o, why) {
+  await sendMail({
+    to: o.email, kind: 'payment-failed', subject: `Payment not completed · ${orderNumber(o.id)}`,
+    html: layout('We could not confirm your payment', `<p>Hi ${esc(o.name.split(' ')[0])},</p><p>We could not confirm your payment for order <b>${esc(orderNumber(o.id))}</b> (${esc(why)}), so your e-books have <b>not</b> been released. If money was deducted from your account, it will be returned automatically by your bank or payment provider, usually within 5–7 working days.</p><p>You are welcome to place the order again, or reply to this email if you need help.</p>`, { label: 'Visit the store', url: publicUrl() }),
+  });
+}
+async function mailAlertToAdmin(o, why, source, extra = '') {
+  const to = alertRecipients();
+  if (!to.length) { console.error('ALERT (no recipient configured):', orderNumber(o.id), why); return; }
+  await sendMail({
+    to: to.join(','), kind: 'admin-alert', subject: `Failed / suspicious payment · ${orderNumber(o.id)}`,
+    html: layout('Payment alert', `<p>An order was <b>blocked automatically</b> and no e-book was delivered.</p><table style="font-size:14px"><tr><td>Order</td><td><b>${esc(orderNumber(o.id))}</b></td></tr><tr><td>Customer</td><td>${esc(o.name)} &lt;${esc(o.email)}&gt;</td></tr><tr><td>Amount</td><td>₹${esc((o.total_cents / 100).toFixed(2))}</td></tr><tr><td>Reason</td><td>${esc(why)}</td></tr><tr><td>Detected by</td><td>${esc(source)}</td></tr><tr><td>IP</td><td>${esc(o.ip || '—')}</td></tr></table>${extra}`, { label: 'Open in admin', url: `${publicUrl()}/admin/orders/${o.id}` }),
+  });
+}
+
+/**
+ * Blocks an order: marks it failed, keeps downloads locked, optionally refunds a captured payment,
+ * and alerts both the admin and the customer. Idempotent: only the first call for an order sends alerts.
+ */
+export async function flagOrder(order, reasons, source, { refundPaymentId } = {}) {
+  const why = [].concat(reasons).join('; ').slice(0, 300);
+  const changed = await db.prepare("UPDATE orders SET status='failed', approval_status='rejected', invoice_status='void', reject_reason=? WHERE id=? AND status='pending'").run(why, order.id);
+  if (!changed.changes) return false;
+  let refundNote = '';
+  if (refundPaymentId) {
+    try { await refundPayment(refundPaymentId, order.total_cents); refundNote = '<p>The captured amount was refunded automatically.</p>'; await audit('system', 'payment.auto-refunded', orderNumber(order.id), refundPaymentId); }
+    catch (e) { refundNote = `<p><b>Automatic refund failed (${esc(e.message)}). Please refund payment ${esc(refundPaymentId)} manually from the Razorpay dashboard.</b></p>`; }
+  }
+  await audit('system', 'payment.blocked', orderNumber(order.id), `${source}: ${why}`);
+  const fresh = await getOrder(order.id);
+  await Promise.all([mailAlertToAdmin(fresh, why, source, refundNote), mailFailureToCustomer(fresh, why)].map((p) => p.catch((e) => console.error(e))));
+  return true;
+}
+
+/** A single failed attempt reported by the gateway. The order stays open (the customer may retry), but both sides are told, once per payment. */
+export async function reportFailedAttempt(order, payment) {
+  const key = payment?.id || 'unknown';
+  if (await db.prepare("SELECT 1 FROM audit_log WHERE action='payment.failed' AND target=? AND detail LIKE ?").get(orderNumber(order.id), `${key}%`)) return false;
+  const why = payment?.error_description || payment?.error_reason || 'Payment declined';
+  await audit('system', 'payment.failed', orderNumber(order.id), `${key} ${why}`);
+  await Promise.all([mailAlertToAdmin(order, why, 'Payment gateway (failed attempt)'), mailFailureToCustomer(order, why)].map((p) => p.catch((e) => console.error(e))));
+  return true;
+}
+
+/**
+ * Called when Razorpay confirms the payment (browser verify and webhook may both arrive: idempotent).
+ * Fully automatic: verify the payment, issue the invoice, deliver the e-books. No admin action is ever needed.
+ * Anything that does not check out is blocked and alerted instead.
  */
 export async function fulfil(order, payment) {
+  const issues = await assessPayment(order, payment);
+  if (issues.length) {
+    await flagOrder(order, issues, 'Automatic payment verification', { refundPaymentId: payment?.status === 'captured' ? payment.id : undefined });
+    return false;
+  }
   const { brand, last4 } = describePayment(payment);
-  const manual = getSettings().require_approval === 'true';
   const changed = (await tx(async () => {
-    const r = (await db.prepare("UPDATE orders SET status='paid', card_brand=?, card_last4=?, payment_ref=?, payment_method='razorpay', approval_status=?, invoice_status='pending' WHERE id=? AND status='pending'")
-      .run(brand, last4, payment.id, manual ? 'pending' : 'approved', order.id));
+    const r = (await db.prepare("UPDATE orders SET status='paid', card_brand=?, card_last4=?, payment_ref=?, payment_method='razorpay', approval_status='approved', approved_at=?, approved_by='auto', invoice_status='pending' WHERE id=? AND status='pending'")
+      .run(brand, last4, payment.id, new Date().toISOString(), order.id));
     if (!r.changes) return false;
     if (order.coupon) (await db.prepare('UPDATE coupons SET uses = uses + 1 WHERE code = ?').run(order.coupon));
-    if (!manual) {
-      (await db.prepare("UPDATE orders SET approved_at=?, approved_by='auto' WHERE id=?").run(new Date().toISOString(), order.id));
-      (await issueInvoiceTx(order.id, 'auto'));
-    }
+    (await issueInvoiceTx(order.id, 'auto'));
     return true;
   }));
   if (changed) {
     const fresh = (await getOrder(order.id));
     (await audit('system', 'payment.captured', orderNumber(order.id), `${payment.id} ${(order.total_cents / 100).toFixed(2)}`));
-    await (manual ? mailReceived(fresh) : mailDelivered(fresh, true)).catch((e) => console.error(e));
+    await mailDelivered(fresh, true).catch((e) => console.error(e));
   }
   return changed;
 }
