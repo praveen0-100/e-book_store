@@ -1,0 +1,4 @@
+{ "out": "src/e-books/9nov/DSA-Handwritten-Notes-Cover.png", "bg": "#0b1a24",
+  "title": [["DSA", "#40e0d0", 300], ["HANDWRITTEN NOTES", "#ffffff", 100]], "rule": "#ffffff",
+  "subtitle": ["Data Structures & Algorithms", "Clear, hand-written notes", "for exams and interviews"],
+  "art": "bars", "accent": "#40e0d0", "author": "PRAVEEN PRABAKARAN" }

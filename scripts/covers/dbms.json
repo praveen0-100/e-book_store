@@ -1,0 +1,4 @@
+{ "out": "src/e-books/9nov/DBMS-Handwritten-Notes-Cover.png", "bg": "#1a1030",
+  "title": [["DBMS", "#b48cff", 300], ["HANDWRITTEN NOTES", "#ffffff", 100]], "rule": "#ffffff",
+  "subtitle": ["Database Management Systems", "Clear, hand-written notes", "for exams and interviews"],
+  "art": "sphere", "accent": "#b48cff", "author": "PRAVEEN PRABAKARAN" }
