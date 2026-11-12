@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Icon } from './Icon.jsx';
 import { useAuth, useCart, useConfig } from '../lib/context.jsx';
+import { useReveal, useScrollState } from '../lib/motion.jsx';
 
 export function Logo({ name }) {
   return (
@@ -19,6 +20,9 @@ export default function StoreLayout() {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const { pathname, search: qs } = useLocation();
+  const { y, progress } = useScrollState();
+  useReveal();
 
   const search = (e) => {
     e.preventDefault();
@@ -28,14 +32,15 @@ export default function StoreLayout() {
 
   return (
     <>
-      <header className={`nav ${open ? 'open' : ''}`}>
+      <div className="scroll-progress" style={{ transform: `scaleX(${progress})` }} aria-hidden="true" />
+      <header className={`nav ${open ? 'open' : ''} ${y > 12 ? 'scrolled' : ''}`}>
         <div className="container nav-inner">
           <Logo name={store_name} />
           <nav className="nav-links" onClick={() => setOpen(false)}>
             <NavLink to="/" end>Home</NavLink>
-            <NavLink to="/books">Library</NavLink>
-            <NavLink to="/books?sort=newest">New releases</NavLink>
-            <NavLink to="/books?sort=popular">Bestsellers</NavLink>
+            <NavLink to="/books" className={() => (pathname === '/books' && !qs ? 'active' : '')}>Library</NavLink>
+            <NavLink to="/books?sort=newest" className={() => (qs === '?sort=newest' ? 'active' : '')}>New releases</NavLink>
+            <NavLink to="/books?sort=popular" className={() => (qs === '?sort=popular' ? 'active' : '')}>Bestsellers</NavLink>
             {!user && !authLoading && <><NavLink to="/login" className="mobile-only">Log in</NavLink><NavLink to="/signup" className="mobile-only">Sign up</NavLink></>}
           </nav>
           <div className="nav-actions">
@@ -50,14 +55,16 @@ export default function StoreLayout() {
               : <div className="nav-auth"><Link to="/login" className="btn btn-ghost btn-sm">Log in</Link><Link to="/signup" className="btn btn-gold btn-sm">Sign up</Link></div>)}
             <Link to="/cart" className="icon-btn" aria-label={`Cart, ${cart.count} items`}>
               <Icon name="bag" size={18} />
-              {cart.count > 0 && <span className="cart-count">{cart.count}</span>}
+              {cart.count > 0 && <span key={cart.count} className="cart-count bump">{cart.count}</span>}
             </Link>
             <button className="icon-btn menu-btn" onClick={() => setOpen(!open)} aria-label="Menu"><Icon name={open ? 'close' : 'menu'} size={18} /></button>
           </div>
         </div>
       </header>
 
-      <main><Outlet /></main>
+      <main key={pathname} className="page-enter"><Outlet /></main>
+
+      <button className={`to-top ${y > 600 ? 'show' : ''}`} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="Back to top" tabIndex={y > 600 ? 0 : -1}><Icon name="arrow" size={18} style={{ transform: 'rotate(-90deg)' }} /></button>
 
       <footer className="footer">
         <div className="container">

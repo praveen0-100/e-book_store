@@ -23,12 +23,13 @@ export default function BookCard({ book }) {
     toast(`“${book.title}” added to cart`);
   };
   return (
-    <Link to={`/books/${book.slug}`} className="book-card fade-in">
+    <Link to={`/books/${book.slug}`} className="book-card reveal">
       <div className="cover-wrap">
         {onSale && <span className="badge gold sale-tag">−{Math.round((1 - book.price_cents / book.compare_cents) * 100)}%</span>}
         <BookCover book={book} />
       </div>
-      <div>
+      <div className="book-info">
+        <span className="book-cat">{book.category}</span>
         <h3>{book.title}</h3>
         <div className="author">{book.author}</div>
         <div className="row">

@@ -31,7 +31,7 @@ export default function Catalog() {
         <span className="eyebrow">The library</span>
         <h1>{q ? <>Results for “{q}”</> : category || 'All books'}</h1>
       </div>
-      <div className="toolbar">
+      <div className="toolbar sticky-bar">
         <div className="chips">
           <button className={`chip ${!category ? 'active' : ''}`} onClick={() => set('category', '')}>All</button>
           {cats.map((c) => <button key={c.name} className={`chip ${category === c.name ? 'active' : ''}`} onClick={() => set('category', c.name)}>{c.name}</button>)}
@@ -51,7 +51,10 @@ export default function Catalog() {
         </div>
       </div>
       {books === null ? <BookGridSkeleton /> : books.length ? (
-        <div className="grid-books" style={{ paddingBottom: 80 }}>{books.map((b) => <BookCard key={b.id} book={b} />)}</div>
+        <>
+          <p className="result-count">{books.length} {books.length === 1 ? 'book' : 'books'}</p>
+          <div className="grid-books" style={{ paddingBottom: 80 }}>{books.map((b) => <BookCard key={b.id} book={b} />)}</div>
+        </>
       ) : (
         <div className="empty"><Icon name="search" size={40} /><h2>No books found</h2><p>Try a different search or category.</p></div>
       )}
