@@ -80,7 +80,7 @@ function BookForm({ book, onClose, onSaved }) {
               <div className="field"><label>Category</label><input className="input" list="cats" value={f.category} onChange={set('category')} /><datalist id="cats">{CATEGORIES.map((c) => <option key={c} value={c} />)}</datalist></div>
             </div>
             <div className="grid-3">
-              <div className="field"><label>Price (₹ INR) *</label><input className="input" type="number" min="1" step="0.01" required value={f.price} onChange={set('price')} /></div>
+              <div className="field"><label>Price (₹ INR, 0 = free) *</label><input className="input" type="number" min="0" step="0.01" required value={f.price} onChange={set('price')} /></div>
               <div className="field"><label>Original price</label><input className="input" type="number" min="0" step="0.01" value={f.compare_price} onChange={set('compare_price')} placeholder="optional" /></div>
               <div className="field"><label>Pages</label><input className="input" type="number" min="0" value={f.pages} onChange={set('pages')} /></div>
             </div>

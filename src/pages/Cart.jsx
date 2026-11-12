@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, money } from '../lib/api.js';
+import { api, money, priceText } from '../lib/api.js';
 import BookCover from '../components/BookCover.jsx';
 import { Icon } from '../components/Icon.jsx';
 import { useCart } from '../lib/context.jsx';
@@ -29,7 +29,7 @@ export function Summary({ quote, children }) {
           <div className="sum-row"><span>Subtotal</span><span>{money(quote.subtotal_cents)}</span></div>
           {quote.discount_cents > 0 && <div className="sum-row disc"><span>Promo {quote.coupon} (−{quote.percent}%)</span><span>−{money(quote.discount_cents)}</span></div>}
           <div className="sum-row"><span>Tax ({quote.tax_rate}%)</span><span>{money(quote.tax_cents)}</span></div>
-          <div className="sum-row total"><span>Total</span><span>{money(quote.total_cents)}</span></div>
+          <div className="sum-row total"><span>Total</span><span>{priceText(quote.total_cents)}</span></div>
         </>
       ) : <div className="skeleton" style={{ height: 110 }} />}
       {children}
@@ -83,7 +83,7 @@ export default function Cart() {
                 <Link to={`/books/${b.slug}`}><b className="serif" style={{ fontSize: 19 }}>{b.title}</b></Link>
                 <div className="muted" style={{ fontSize: 13 }}>{b.author} · Digital edition</div>
               </div>
-              <b>{money(b.price_cents)}</b>
+              <b>{priceText(b.price_cents)}</b>
               <button className="icon-btn" onClick={() => cart.remove(b.id)} aria-label={`Remove ${b.title}`}><Icon name="trash" size={16} /></button>
             </div>
           ))}

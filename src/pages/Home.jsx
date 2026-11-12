@@ -41,7 +41,7 @@ export default function Home() {
   const best = books ? [...books].slice(0, 4) : [];
   const fresh = newest.slice(0, 4);
   const heroBooks = [...newest.filter((b) => b.has_cover), ...newest.filter((b) => !b.has_cover)].slice(0, 3);
-  const minPrice = books?.length ? Math.min(...books.map((b) => b.price_cents)) : 0;
+  const minPrice = books?.some((b) => b.price_cents > 0) ? Math.min(...books.map((b) => b.price_cents).filter((c) => c > 0), Infinity) : 0;
 
   return (
     <>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, money } from '../lib/api.js';
+import { api, money, priceText } from '../lib/api.js';
 import BookCover from '../components/BookCover.jsx';
 import BookCard from '../components/BookCard.jsx';
 import { Icon } from '../components/Icon.jsx';
@@ -26,6 +26,7 @@ export default function BookDetail() {
 
   const inCart = cart.has(book.id);
   const onSale = book.compare_cents > book.price_cents;
+  const free = book.price_cents === 0;
   const add = () => { cart.add(book); toast(`“${book.title}” added to cart`); };
 
   return (
@@ -39,17 +40,17 @@ export default function BookDetail() {
           <p style={{ margin: '14px 0' }} className="muted">by <b style={{ color: 'var(--text)' }}>{book.author}</b></p>
 
           <div className="card buy-box">
-            <div className="big-price">{money(book.price_cents)}{onSale && <s>{money(book.compare_cents)}</s>}</div>
+            <div className="big-price">{priceText(book.price_cents)}{onSale && <s>{money(book.compare_cents)}</s>}</div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {inCart
                 ? <Link to="/cart" className="btn btn-gold btn-lg"><Icon name="check" size={18} /> In cart — view cart</Link>
-                : <button className="btn btn-gold btn-lg" onClick={add}><Icon name="bag" size={18} /> Add to cart</button>}
-              <button className="btn btn-ghost btn-lg" onClick={() => { if (!inCart) cart.add(book); nav('/checkout'); }}>Buy now</button>
+                : <button className="btn btn-gold btn-lg" onClick={add}><Icon name="bag" size={18} /> {free ? 'Add to cart (free)' : 'Add to cart'}</button>}
+              <button className="btn btn-ghost btn-lg" onClick={() => { if (!inCart) cart.add(book); nav('/checkout'); }}>{free ? 'Get it free' : 'Buy now'}</button>
             </div>
             <ul className="perks">
-              <li><Icon name="bolt" size={18} /> Instant download after purchase</li>
+              <li><Icon name="bolt" size={18} /> {free ? 'Free: no payment needed, instant download' : 'Instant download after purchase'}</li>
               <li><Icon name="infinity" size={18} /> Lifetime access · re-download any time</li>
-              <li><Icon name="receipt" size={18} /> Tax invoice included</li>
+              {!free && <li><Icon name="receipt" size={18} /> Tax invoice included</li>}
             </ul>
           </div>
 

@@ -74,7 +74,7 @@ export default function OrderPage() {
       </div>
 
       <div className="card card-pad">
-        <div className="panel-head"><h3>Order details</h3>{order.invoice_status === 'issued' ? <Link className="btn btn-ghost btn-sm" to={`/invoice/${token}`}><Icon name="receipt" size={16} /> View invoice</Link> : <span className="badge">Invoice pending</span>}</div>
+        <div className="panel-head"><h3>Order details</h3>{order.invoice_status === 'issued' ? <Link className="btn btn-ghost btn-sm" to={`/invoice/${token}`}><Icon name="receipt" size={16} /> View invoice</Link> : <span className={`badge ${order.invoice_status === 'none' ? 'green' : ''}`}>{order.invoice_status === 'none' ? 'Free order' : 'Invoice pending'}</span>}</div>
         <div className="kv">
           <div><span>Order date</span><span>{fmtDateTime(order.created_at)}</span></div>
           <div><span>Payment</span><span>{payLabel(order)}</span></div>

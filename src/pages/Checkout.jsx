@@ -47,9 +47,17 @@ export default function Checkout() {
     nav(`/order/${token}?new=1`, { replace: true });
   };
 
+  const free = quote?.total_cents === 0;
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setError('');
+    if (free) { // free books: no payment step
+      try {
+        const o = await api('/checkout', { method: 'POST', body: { ids: cart.items.map((i) => i.id), coupon: coupon || undefined, name: user ? user.name : f.name, email: user ? user.email : f.email } });
+        finish(o.token);
+      } catch (err) { setError(err.message); setBusy(false); }
+      return;
+    }
     if (upi) {
       try {
         const o = await api('/checkout/upi', { method: 'POST', body: { ids: cart.items.map((i) => i.id), coupon: coupon || undefined, name: user ? user.name : f.name, email: user ? user.email : f.email, utr } });
@@ -91,7 +99,7 @@ export default function Checkout() {
   };
 
   const needLogin = config.require_login && !user;
-  const disabled = needLogin || (upi ? utr.replace(/\s/g, '').length !== 12 : config.payments_enabled === false);
+  const disabled = needLogin || (free ? false : upi ? utr.replace(/\s/g, '').length !== 12 : config.payments_enabled === false);
 
   return (
     <div className="container">
@@ -114,10 +122,11 @@ export default function Checkout() {
               <div className="field"><label htmlFor="name">Full name</label><input id="name" className="input" required autoComplete="name" readOnly={!!user} value={user ? user.name : f.name} onChange={set('name')} placeholder="Your name" /></div>
               <div className="field"><label htmlFor="email">Email</label><input id="email" type="email" className="input" required autoComplete="email" readOnly={!!user} value={user ? user.email : f.email} onChange={set('email')} placeholder="you@example.com" /></div>
             </div>
-            <p className="muted" style={{ fontSize: 13 }}>Your invoice and download links are available instantly after payment.</p>
+            <p className="muted" style={{ fontSize: 13 }}>Your download links are available instantly{free ? '' : ', with an invoice after payment'}.</p>
           </div>
 
-          <div className="card card-pad form-stack">
+          {free && <div className="card card-pad ok-box" style={{ display: 'flex', gap: 12, alignItems: 'center' }}><Icon name="check-circle" size={22} /><div><b>These books are free.</b><div style={{ fontSize: 13.5, marginTop: 2 }}>No payment needed. Enter your details and your download links appear instantly.</div></div></div>}
+          <div className="card card-pad form-stack" style={free ? { display: 'none' } : undefined}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: 22 }}>Payment</h3>
               {!upi && <span className="badge green"><Icon name="lock" size={12} /> Secured by Razorpay</span>}
@@ -161,7 +170,7 @@ export default function Checkout() {
           </div>
           {error && <div className="error-box" role="alert">{error}</div>}
           <button className="btn btn-gold btn-lg btn-block" type="submit" disabled={busy || !quote || disabled}>
-            {busy ? <><span className="spinner" /> Processing…</> : upi ? <><Icon name="check" size={17} /> I have paid — submit</> : <><Icon name="lock" size={17} /> Pay now</>}
+            {busy ? <><span className="spinner" /> Processing…</> : free ? <><Icon name="download" size={17} /> Get my free books</> : upi ? <><Icon name="check" size={17} /> I have paid — submit</> : <><Icon name="lock" size={17} /> Pay now</>}
           </button>
           <Link to="/cart" className="muted" style={{ fontSize: 13, textAlign: 'center' }}>← Back to cart</Link>
         </Summary>

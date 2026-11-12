@@ -10,7 +10,7 @@ import { COOKIE, makeSession, requireAdmin, verifyPassword, readSession, attachU
 import { googleEnabled, googleClientId } from './google.js';
 import { mountAuth } from './routes-auth.js';
 import { paymentsEnabled, keyId, createOrder, verifyCheckoutSignature, verifyWebhookSignature, fetchPayment } from './payments.js';
-import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder, placeUpiOrder, flagOrder, reportFailedAttempt } from './orders.js';
+import { orderNumber, serializeOrder, fulfil, canDownload, refundOrder, placeUpiOrder, placeFreeOrder, flagOrder, reportFailedAttempt } from './orders.js';
 import { mountPublic, mountAdmin, dayStartISO, tzMinutes, localDateOf, localDowOf } from './routes-extra.js';
 import { securityHeaders, rateLimit, requestLog } from './security.js';
 import { blobMode, saveCover, removeFile, sendCover, sendEbook, checkUploadedEbook, EBOOK_EXT, COVER_EXT } from './storage.js';
@@ -144,8 +144,12 @@ app.post('/api/checkout', checkoutLimiter, async (req, res) => {
   if (req.user) { name = req.user.name; email = req.user.email; } // logged-in customers always buy as their account identity, never a typed-in one
   if (!name?.trim() || name.length > 120) return res.status(400).json({ error: 'Please enter your full name.' });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) return res.status(400).json({ error: 'Please enter a valid email address.' });
-  if (!paymentsEnabled()) return res.status(503).json({ error: 'Online payments are not configured yet. Please contact the store owner.' });
   const p = await priceCart(ids, coupon); // prices always come from the database, never from the browser
+  if (p.total === 0) { // everything in the cart is free: no payment step
+    const o = await placeFreeOrder({ books: p.books, name: name.trim(), email: email.trim().toLowerCase(), ip: req.ip, customerId: req.user?.id });
+    return res.json({ free: true, token: o.token, number: orderNumber(o.id) });
+  }
+  if (!paymentsEnabled()) return res.status(503).json({ error: 'Online payments are not configured yet. Please contact the store owner.' });
   const settings = getSettings();
   const token = crypto.randomBytes(20).toString('hex');
   const rzp = await createOrder({ amount: p.total, currency: 'INR', receipt: token.slice(0, 32), notes: { email: email.trim().toLowerCase() } });
@@ -359,7 +363,7 @@ admin.get('/books', async (req, res) => {
 
 admin.post('/books', uploadFields, async (req, res) => {
   const f = bookFields(req.body);
-  if (!f.title || !f.author || f.price_cents <= 0) return res.status(400).json({ error: 'Title, author and a price greater than zero are required.' });
+  if (!f.title || !f.author || f.price_cents < 0) return res.status(400).json({ error: 'Title, author and a price (0 for a free book) are required.' });
   const ebook = await incomingEbook(req);
   if (f.published && !ebook) return res.status(400).json({ error: NEEDS_FILE });
   let slug = slugify(f.title) || 'book', n = 1;
@@ -377,7 +381,7 @@ admin.put('/books/:id', uploadFields, async (req, res) => {
   const old = await db.prepare('SELECT * FROM books WHERE id = ?').get(id);
   if (!old) return res.status(404).json({ error: 'Book not found' });
   const f = bookFields(req.body);
-  if (!f.title || !f.author || f.price_cents <= 0) return res.status(400).json({ error: 'Title, author and a price greater than zero are required.' });
+  if (!f.title || !f.author || f.price_cents < 0) return res.status(400).json({ error: 'Title, author and a price (0 for a free book) are required.' });
   const ebook = await incomingEbook(req);
   if (f.published && !ebook && !old.ebook_file) return res.status(400).json({ error: NEEDS_FILE });
   const cover = req.files?.cover?.[0];

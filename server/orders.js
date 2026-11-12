@@ -240,3 +240,19 @@ export async function placeUpiOrder({ books, p, name, email, utr, ip, customerId
   await mailReceived(fresh).catch((e) => console.error(e));
   return fresh;
 }
+
+/** Free books: no payment, no invoice. The order is stored as paid and approved so the normal download links work. */
+export async function placeFreeOrder({ books, name, email, ip, customerId }) {
+  const token = crypto.randomBytes(20).toString('hex');
+  const now = new Date().toISOString();
+  const id = await tx(async () => {
+    const oid = await db.insert(`INSERT INTO orders (token,email,name,status,subtotal_cents,discount_cents,tax_cents,total_cents,tax_rate,coupon,payment_method,card_brand,approval_status,approved_at,approved_by,invoice_status,created_at,ip,customer_id)
+      VALUES (?,?,?,'paid',0,0,0,0,0,NULL,'free','Free','approved',?,'auto','none',?,?,?)`, token, email, name, now, now, ip || null, customerId || null);
+    for (const bk of books) await db.prepare('INSERT INTO order_items (order_id,book_id,title,author,price_cents) VALUES (?,?,?,?,?)').run(oid, bk.id, bk.title, bk.author, 0);
+    return oid;
+  });
+  await audit('system', 'order.free', orderNumber(id), books.map((b) => b.title).join(', ').slice(0, 200));
+  const fresh = await getOrder(id);
+  await mailDelivered(fresh, false).catch((e) => console.error(e));
+  return fresh;
+}

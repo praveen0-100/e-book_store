@@ -787,3 +787,26 @@ html.admin-app, html.admin-app body { overscroll-behavior-y: none; }
   .admin-main { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
   .to-top { display: none; }
 }
+
+/* ---------- book preview: sample pages gallery + lightbox, free price ---------- */
+.free-price { color: var(--green); font-weight: 700; }
+.pv-stage { position: relative; display: grid; place-items: center; padding: 6px 54px; }
+.pv-main { position: relative; display: block; width: min(560px, 100%); border-radius: 10px; overflow: hidden; cursor: zoom-in; background: #fff; box-shadow: 0 30px 60px -28px #000, 0 0 0 1px var(--line-2); }
+.pv-main img { width: 100%; height: auto; display: block; animation: fade 0.45s var(--ease) both; }
+.pv-zoom { position: absolute; right: 12px; bottom: 12px; display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(7, 8, 13, 0.78); color: var(--text); backdrop-filter: blur(6px); opacity: 0; transform: translateY(6px); transition: 0.3s var(--ease); }
+.pv-main:hover .pv-zoom, .pv-main:focus-visible .pv-zoom { opacity: 1; transform: none; }
+.pv-nav { position: absolute; top: 50%; translate: 0 -50%; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); border: 1px solid var(--line-2); transition: 0.25s var(--ease); z-index: 3; }
+.pv-nav:hover { background: var(--gold-grad); color: #1a1408; border-color: transparent; scale: 1.08; }
+.pv-nav.prev { left: 0; } .pv-nav.next { right: 0; }
+.pv-thumbs { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+.pv-thumbs button { position: relative; width: 74px; border-radius: 6px; overflow: hidden; border: 2px solid transparent; opacity: 0.6; transition: 0.25s var(--ease); background: #fff; }
+.pv-thumbs button img { width: 100%; height: auto; display: block; }
+.pv-thumbs button span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; font-weight: 700; text-align: center; color: #fff; background: rgba(7, 8, 13, 0.7); padding: 1px 0; }
+.pv-thumbs button:hover { opacity: 1; transform: translateY(-3px); }
+.pv-thumbs button.on { opacity: 1; border-color: var(--gold); }
+.pv-lightbox { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px 70px; background: rgba(4, 5, 9, 0.92); backdrop-filter: blur(8px); animation: fade 0.25s both; cursor: zoom-out; }
+.pv-lightbox img { max-height: calc(100vh - 80px); max-width: 100%; width: auto; border-radius: 8px; background: #fff; box-shadow: 0 40px 100px -20px #000; cursor: default; }
+.pv-lightbox .pv-nav.prev { left: 18px; } .pv-lightbox .pv-nav.next { right: 18px; }
+.pv-close { position: absolute; top: 16px; right: 16px; z-index: 3; }
+.pv-cap { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 13px; color: var(--muted); pointer-events: none; }
+@media (max-width: 600px) { .pv-stage { padding: 6px 0; } .pv-nav { width: 36px; height: 36px; } .pv-stage .pv-nav.prev { left: 6px; } .pv-stage .pv-nav.next { right: 6px; } .pv-thumbs button { width: 58px; } .pv-lightbox { padding: 56px 12px 40px; } .pv-lightbox .pv-nav { top: auto; bottom: 10px; translate: 0 0; } .pv-lightbox .pv-nav.prev { left: 12px; } .pv-lightbox .pv-nav.next { right: 12px; } }

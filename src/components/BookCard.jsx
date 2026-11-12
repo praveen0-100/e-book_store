@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import BookCover from './BookCover.jsx';
 import { Icon } from './Icon.jsx';
-import { money } from '../lib/api.js';
+import { money, priceText } from '../lib/api.js';
 import { useCart, useToast } from '../lib/context.jsx';
 
 export function Stars({ rating, reviews }) {
@@ -34,7 +34,7 @@ export default function BookCard({ book }) {
         <div className="author">{book.author}</div>
         <div className="row">
           <div>
-            <div className="price">{money(book.price_cents)}{onSale && <s>{money(book.compare_cents)}</s>}</div>
+            <div className="price"><span className={book.price_cents === 0 ? 'free-price' : ''}>{priceText(book.price_cents)}</span>{onSale && <s>{money(book.compare_cents)}</s>}</div>
           </div>
           <button className={`add-btn ${inCart ? 'in' : ''}`} onClick={add} aria-label={inCart ? 'In cart' : `Add ${book.title} to cart`}>
             <Icon name={inCart ? 'check' : 'plus'} size={17} />

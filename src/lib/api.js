@@ -25,6 +25,8 @@ const currency = 'INR';
 export const setCurrency = () => {};
 export const money = (cents = 0) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(cents / 100);
+/** Price label: 0 shows as Free. */
+export const priceText = (cents = 0) => (cents === 0 ? 'Free' : money(cents));
 export const moneyShort = (cents = 0) => {
   const v = cents / 100;
   if (Math.abs(v) >= 1000) return new Intl.NumberFormat('en-IN', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(v);
