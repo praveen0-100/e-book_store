@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Icon } from '../components/Icon.jsx';
 import { useConfig } from '../lib/context.jsx';
+import { InstallApp, useAdminApp } from '../lib/pwa.jsx';
 
 export default function Login() {
   const { store_name } = useConfig();
   const nav = useNavigate();
+  useAdminApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,6 +44,7 @@ export default function Login() {
           <div className="field"><label htmlFor="e">Email</label><input id="e" className="input" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div className="field"><label htmlFor="p">Password</label><input id="p" className="input" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus /></div>
           <button className="btn btn-gold btn-lg btn-block" disabled={busy}>{busy ? <span className="spinner" /> : <>Sign in <Icon name="arrow" size={18} /></>}</button>
+          <InstallApp className="btn btn-ghost btn-block" label="Install admin app on this device" />
           <Link to="/" className="muted" style={{ textAlign: 'center', fontSize: 13 }}>← Back to storefront</Link>
         </form>
       </div>

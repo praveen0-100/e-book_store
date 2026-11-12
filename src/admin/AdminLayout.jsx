@@ -3,6 +3,7 @@ import { NavLink, Navigate, Outlet, Link, useNavigate } from 'react-router-dom';
 import { api, initials } from '../lib/api.js';
 import { Icon } from '../components/Icon.jsx';
 import { useConfig } from '../lib/context.jsx';
+import { InstallApp, useAdminApp } from '../lib/pwa.jsx';
 
 const AdminCtx = createContext(null);
 export const useAdmin = () => useContext(AdminCtx);
@@ -55,6 +56,7 @@ export default function AdminLayout() {
           ))}
           <div className="side-label">Store</div>
           <a className="side-link" href="/" target="_blank" rel="noreferrer"><Icon name="eye" size={19} /><span>View storefront</span></a>
+          <div className="side-install"><InstallApp label="Install admin app" /></div>
           <div className="side-foot">
             <span className="avatar">{initials(user.name)}</span>
             <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 14 }}>{user.name}</b><small>{user.email}</small></div>

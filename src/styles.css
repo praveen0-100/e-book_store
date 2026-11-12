@@ -770,3 +770,20 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 @media (prefers-reduced-motion: reduce) { .reveal, .hero-title .w, .hb, .hero-lead, .hero-cta, .hero-stats, .hero-pill { opacity: 1 !important; transform: none !important; } }
 
 .reveal.in:hover { transition-delay: 0ms; }
+
+/* ---------- admin as an installed app ---------- */
+.install-help { margin-top: 8px; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
+.side-install { margin-top: auto; padding-top: 8px; }
+.side-install + .side-foot { margin-top: 8px; }
+@media (max-width: 860px) {
+  .side-install { margin: 0 0 0 auto; padding: 0; }
+  .side-install .btn { padding: 9px 12px; width: auto; }
+  .side-install .lbl { display: none; }
+  .install-help { position: absolute; right: 12px; z-index: 30; width: 240px; background: #14141c; }
+}
+html.admin-app, html.admin-app body { overscroll-behavior-y: none; }
+@media (display-mode: standalone) {
+  .sidebar { padding-top: max(12px, env(safe-area-inset-top)); }
+  .admin-main { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .to-top { display: none; }
+}
